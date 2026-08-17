@@ -3,6 +3,8 @@ name: DatasetStudio Build
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +37,7 @@ jobs:
         run: dotnet build src/DatasetStudio.WinForms/DatasetStudio.WinForms.csproj -c Release --no-restore
 
       - name: Commit copied IAD26 logo
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           if (git status --porcelain -- "assets/科准LOGO白.ico") {

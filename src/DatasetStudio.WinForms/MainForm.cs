@@ -36,6 +36,37 @@ public sealed class MainForm : Form
         ShowPage(_classificationPage, _btnClassification);
     }
 
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == (Keys.Control | Keys.Z) && _session is not null)
+        {
+            // 备注文本框聚焦时保留 WinForms 自己的文本撤销；其他位置才撤销分类。
+            if (FindFocusedControl(this) is TextBoxBase)
+                return base.ProcessCmdKey(ref msg, keyData);
+
+            try
+            {
+                var imageId = _session.Repository.UndoLastClassification();
+                if (imageId is null)
+                {
+                    System.Media.SystemSounds.Beep.Play();
+                }
+                else
+                {
+                    _classificationPage.BindSession(_session);
+                    _currentProject.Text = $"当前项目：{_session.Project.Name}  |  已撤销上一笔分类";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "撤销失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            return true;
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void BuildLayout()
     {
         var root = new TableLayoutPanel
@@ -213,6 +244,17 @@ public sealed class MainForm : Form
             button.ForeColor = isActive ? UiTheme.TextPrimary : UiTheme.TextSecondary;
             button.Font = new Font("Microsoft YaHei UI", 9.5F, isActive ? FontStyle.Bold : FontStyle.Regular);
         }
+    }
+
+    private static Control? FindFocusedControl(Control root)
+    {
+        if (root.Focused) return root;
+        foreach (Control child in root.Controls)
+        {
+            if (!child.ContainsFocus) continue;
+            return FindFocusedControl(child) ?? child;
+        }
+        return null;
     }
 
     private static Button CreateNavButton(string text, bool active)

@@ -21,6 +21,16 @@ public sealed class AppSession
     public string ReferenceImagePath => Resolve(Project.ReferenceImage);
     public string ProductConfigPath => Resolve(Project.ProductConfig);
 
+    public Size ReferenceImageSize
+    {
+        get
+        {
+            if (!File.Exists(ReferenceImagePath)) return Size.Empty;
+            using var image = Image.FromFile(ReferenceImagePath);
+            return image.Size;
+        }
+    }
+
     private AppSession(string projectDirectory, DatasetProject project)
     {
         ProjectDirectory = Path.GetFullPath(projectDirectory);
@@ -72,8 +82,9 @@ public sealed class AppSession
         var directory = Path.Combine(ProjectDirectory, "reference");
         Directory.CreateDirectory(directory);
         var target = Path.Combine(directory, "reference_aligned.png");
-        using var image = Image.FromFile(sourceFile);
-        image.Save(target, ImageFormat.Png);
+        using (var image = Image.FromFile(sourceFile))
+        using (var copy = new Bitmap(image))
+            copy.Save(target, ImageFormat.Png);
         Project.ReferenceImage = "reference\\reference_aligned.png";
         SaveProject();
         WriteProductConfig();
@@ -82,35 +93,31 @@ public sealed class AppSession
     public void WriteProductConfig()
     {
         var rois = Repository.LoadRois();
-        var width = 0;
-        var height = 0;
-        if (File.Exists(ReferenceImagePath))
-        {
-            using var image = Image.FromFile(ReferenceImagePath);
-            width = image.Width;
-            height = image.Height;
-        }
+        var size = ReferenceImageSize;
 
         var screwSlots = rois
             .Where(x => x.Kind is RoiKind.ScrewSlot or RoiKind.EmptySlot)
+            .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => new
             {
                 id = x.Id,
                 roi = new[] { x.X, x.Y, x.Width, x.Height },
-                expected = x.Expected,
+                expected = x.Kind == RoiKind.EmptySlot ? "empty" : "screw",
                 enabled = x.Enabled
             });
         var springRegions = rois
             .Where(x => x.Kind == RoiKind.SpringRegion)
+            .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => new
             {
                 id = x.Id,
                 roi = new[] { x.X, x.Y, x.Width, x.Height },
-                expected_count = x.ExpectedCount ?? 0,
+                expected_count = x.ExpectedCount ?? 4,
                 enabled = x.Enabled
             });
         var anomalyRegions = rois
             .Where(x => x.Kind == RoiKind.AnomalyRegion)
+            .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => new
             {
                 id = x.Id,
@@ -125,8 +132,8 @@ public sealed class AppSession
             coordinate_system = new
             {
                 reference_image = "artifacts/reference/reference_aligned.png",
-                image_width = width,
-                image_height = height
+                image_width = size.Width,
+                image_height = size.Height
             },
             screw_slots = screwSlots,
             spring_regions = springRegions,

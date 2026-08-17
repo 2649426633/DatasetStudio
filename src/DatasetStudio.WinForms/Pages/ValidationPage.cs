@@ -30,7 +30,8 @@ public sealed class ValidationPage : UserControl
             return;
         }
 
-        var items = new DatasetValidator().Validate(_session.Repository);
+        var size = _session.ReferenceImageSize;
+        var items = new DatasetValidator().Validate(_session.Repository, size.Width, size.Height);
         foreach (var item in items)
         {
             var icon = item.Severity switch

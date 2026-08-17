@@ -84,14 +84,14 @@ public sealed class ExportPage : UserControl
         browse.Location = new Point(686, 498);
         browse.Size = new Size(88, 32);
         browse.Click += (_, _) => BrowsePublishTarget();
-        var publish = UiTheme.CreateButton("发布", false);
+        var publish = UiTheme.CreateButton("安全发布", false);
         publish.Location = new Point(786, 498);
         publish.Size = new Size(110, 32);
         publish.Click += (_, _) => PublishPackage();
 
         var safety = new Label
         {
-            Text = "安全策略：源图片永不删除/移动/重命名；生成数据包先进入 staging；每张复制文件做 SHA-256 校验。发布前会备份 DatasetStudio 管理的目录和 manifest。",
+            Text = "安全策略：源图片永不删除/移动/重命名；生成与发布都先进入 staging；复制文件逐个做 SHA-256 校验。发布前备份 DatasetStudio 管理的目标项，失败会尝试自动回滚。",
             Location = new Point(24, 558),
             Size = new Size(920, 62),
             ForeColor = UiTheme.TextMuted
@@ -109,8 +109,9 @@ public sealed class ExportPage : UserControl
     private void ValidateOnly()
     {
         if (_session is null) return;
+        var size = _session.ReferenceImageSize;
         var validator = new DatasetValidator();
-        var ok = validator.CanExport(_session.Repository, out var items);
+        var ok = validator.CanExport(_session.Repository, out var items, size.Width, size.Height);
         var message = string.Join(Environment.NewLine,
             items.Select(x => $"{(x.Severity == DatasetStudio.Core.ValidationSeverity.Ok ? "✅" : x.Severity == DatasetStudio.Core.ValidationSeverity.Warning ? "⚠" : "❌")} {x.Name}: {x.Value} - {x.Message}"));
         MessageBox.Show(this, message, ok ? "校验通过" : "校验失败", MessageBoxButtons.OK,
@@ -159,14 +160,21 @@ public sealed class ExportPage : UserControl
             MessageBox.Show(this, "请选择发布目标目录。", "发布", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+
+        var target = _publishTarget.Text.Trim();
+        if (MessageBox.Show(this,
+                $"即将安全发布到：\n{target}\n\n现有 DatasetStudio 管理数据会先备份，再通过 staging + SHA256 校验替换。继续吗？",
+                "确认发布", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            return;
+
         try
         {
-            var backup = new SafePublisher().Publish(_lastPackageDirectory, _publishTarget.Text.Trim());
+            var backup = new SafePublisher().Publish(_lastPackageDirectory, target);
             MessageBox.Show(this, $"发布完成。\n备份目录：{backup}", "Dataset Studio", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "发布失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "发布失败 / 已尝试回滚", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

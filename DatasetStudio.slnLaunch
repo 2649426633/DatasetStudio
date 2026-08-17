@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "DatasetStudio",
+    "Projects": [
+      {
+        "Path": "src\\DatasetStudio.WinForms\\DatasetStudio.WinForms.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
