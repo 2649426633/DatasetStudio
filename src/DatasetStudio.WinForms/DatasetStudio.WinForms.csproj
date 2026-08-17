@@ -16,4 +16,22 @@
     <ProjectReference Include="..\DatasetStudio.Core\DatasetStudio.Core.csproj" />
     <ProjectReference Include="..\DatasetStudio.Infrastructure\DatasetStudio.Infrastructure.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Pages\ClassificationPage.cs"><SubType>UserControl</SubType></Compile>
+    <Compile Update="Pages\ClassificationPage.Designer.cs"><DependentUpon>ClassificationPage.cs</DependentUpon></Compile>
+    <EmbeddedResource Update="Pages\ClassificationPage.resx"><DependentUpon>ClassificationPage.cs</DependentUpon></EmbeddedResource>
+
+    <Compile Update="Pages\RoiCalibrationPage.cs"><SubType>UserControl</SubType></Compile>
+    <Compile Update="Pages\RoiCalibrationPage.Designer.cs"><DependentUpon>RoiCalibrationPage.cs</DependentUpon></Compile>
+    <EmbeddedResource Update="Pages\RoiCalibrationPage.resx"><DependentUpon>RoiCalibrationPage.cs</DependentUpon></EmbeddedResource>
+
+    <Compile Update="Pages\ValidationPage.cs"><SubType>UserControl</SubType></Compile>
+    <Compile Update="Pages\ValidationPage.Designer.cs"><DependentUpon>ValidationPage.cs</DependentUpon></Compile>
+    <EmbeddedResource Update="Pages\ValidationPage.resx"><DependentUpon>ValidationPage.cs</DependentUpon></EmbeddedResource>
+
+    <Compile Update="Pages\ExportPage.cs"><SubType>UserControl</SubType></Compile>
+    <Compile Update="Pages\ExportPage.Designer.cs"><DependentUpon>ExportPage.cs</DependentUpon></Compile>
+    <EmbeddedResource Update="Pages\ExportPage.resx"><DependentUpon>ExportPage.cs</DependentUpon></EmbeddedResource>
+  </ItemGroup>
 </Project>
