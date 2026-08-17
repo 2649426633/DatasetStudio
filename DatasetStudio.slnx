@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src\DatasetStudio.Core\DatasetStudio.Core.csproj" />
+  <Project Path="src\DatasetStudio.Infrastructure\DatasetStudio.Infrastructure.csproj" />
+  <Project Path="src\DatasetStudio.WinForms\DatasetStudio.WinForms.csproj" />
+</Solution>
