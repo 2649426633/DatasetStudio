@@ -1,0 +1,46 @@
+name: DatasetStudio Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy IAD26 logo when missing
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "assets" | Out-Null
+          if (-not (Test-Path "assets/科准LOGO白.ico")) {
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/2649426633/IAD26/main/%E7%A7%91%E5%87%86LOGO%E7%99%BD.ico" -OutFile "assets/科准LOGO白.ico"
+          }
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore src/DatasetStudio.WinForms/DatasetStudio.WinForms.csproj
+
+      - name: Build
+        run: dotnet build src/DatasetStudio.WinForms/DatasetStudio.WinForms.csproj -c Release --no-restore
+
+      - name: Commit copied IAD26 logo
+        shell: pwsh
+        run: |
+          if (git status --porcelain -- "assets/科准LOGO白.ico") {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add "assets/科准LOGO白.ico"
+            git commit -m "Copy IAD26 application logo"
+            git push
+          }

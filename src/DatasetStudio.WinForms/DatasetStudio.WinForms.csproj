@@ -9,6 +9,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>DatasetStudio.WinForms</RootNamespace>
     <AssemblyName>DatasetStudio</AssemblyName>
+    <ApplicationIcon>..\..\assets\科准LOGO白.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
