@@ -43,6 +43,40 @@ public enum ValidationSeverity
     Error
 }
 
+public sealed class DatasetCategoryOptions
+{
+    [JsonPropertyName("train_good_label")]
+    public string TrainGoodLabel { get; set; } = "Train GOOD";
+
+    [JsonPropertyName("test_good_label")]
+    public string TestGoodLabel { get; set; } = "Test GOOD";
+
+    [JsonPropertyName("test_ng_label")]
+    public string TestNgLabel { get; set; } = "Test NG";
+
+    [JsonPropertyName("ignore_label")]
+    public string IgnoreLabel { get; set; } = "Ignore";
+
+    [JsonPropertyName("train_good_directory")]
+    public string TrainGoodDirectory { get; set; } = "train\\good";
+
+    [JsonPropertyName("test_good_directory")]
+    public string TestGoodDirectory { get; set; } = "test\\good";
+
+    [JsonPropertyName("test_ng_directory")]
+    public string TestNgDirectory { get; set; } = "test\\ng";
+
+    public string GetLabel(DatasetSplit split, ImageTruth truth) => (split, truth) switch
+    {
+        (DatasetSplit.Train, ImageTruth.Good) => TrainGoodLabel,
+        (DatasetSplit.Test, ImageTruth.Good) => TestGoodLabel,
+        (DatasetSplit.Test, ImageTruth.Ng) => TestNgLabel,
+        (DatasetSplit.Ignore, _) => IgnoreLabel,
+        (_, ImageTruth.Ignore) => IgnoreLabel,
+        _ => "未分类"
+    };
+}
+
 public sealed class DatasetProject
 {
     [JsonPropertyName("schema_version")]
@@ -59,6 +93,9 @@ public sealed class DatasetProject
 
     [JsonPropertyName("product_config")]
     public string ProductConfig { get; set; } = "configs\\product.json";
+
+    [JsonPropertyName("categories")]
+    public DatasetCategoryOptions Categories { get; set; } = new();
 }
 
 public sealed class ImageRecord
