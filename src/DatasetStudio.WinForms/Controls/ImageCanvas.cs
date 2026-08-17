@@ -135,6 +135,8 @@ public sealed class ImageCanvas : Control
             using var pen = new Pen(Color.White, 2f) { DashStyle = DashStyle.Dash };
             e.Graphics.DrawRectangle(pen, Rectangle.Round(ToScreen(_createPreview)));
         }
+
+        DrawCanvasBadge(e.Graphics);
     }
 
     protected override void OnMouseWheel(MouseEventArgs e)
@@ -344,6 +346,36 @@ public sealed class ImageCanvas : Control
 
         if (selected && AllowRoiEditing)
             DrawResizeHandles(graphics, rect);
+    }
+
+    private void DrawCanvasBadge(Graphics graphics)
+    {
+        if (_image is null) return;
+
+        var name = Path.GetFileName(_imagePath);
+        var text = $"{name}   ·   {Math.Round(_zoom * 100)}%";
+        using var font = UiTheme.CreateFont(9F, FontStyle.Bold);
+        var textSize = TextRenderer.MeasureText(text, font, new Size(int.MaxValue, 28), TextFormatFlags.NoPadding);
+        var badge = new Rectangle(12, 12, textSize.Width + 20, 28);
+
+        using var path = new GraphicsPath();
+        const int radius = 6;
+        path.AddArc(badge.Left, badge.Top, radius * 2, radius * 2, 180, 90);
+        path.AddArc(badge.Right - radius * 2, badge.Top, radius * 2, radius * 2, 270, 90);
+        path.AddArc(badge.Right - radius * 2, badge.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
+        path.AddArc(badge.Left, badge.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
+        path.CloseFigure();
+        using var fill = new SolidBrush(Color.FromArgb(225, 27, 27, 27));
+        using var border = new Pen(Color.FromArgb(64, 64, 64));
+        graphics.FillPath(fill, path);
+        graphics.DrawPath(border, path);
+        TextRenderer.DrawText(
+            graphics,
+            text,
+            font,
+            Rectangle.Inflate(badge, -10, 0),
+            Color.White,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
     }
 
     private static void DrawResizeHandles(Graphics graphics, Rectangle rect)

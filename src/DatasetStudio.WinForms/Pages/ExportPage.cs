@@ -5,8 +5,11 @@ namespace DatasetStudio.WinForms.Pages;
 public sealed class ExportPage : UserControl
 {
     private readonly Label _projectPath = new();
-    private readonly Label _counts = new();
     private readonly Label _lastPackage = new();
+    private readonly Label _trainGoodCount = new();
+    private readonly Label _testGoodCount = new();
+    private readonly Label _testNgCount = new();
+    private readonly Label _ignoredCount = new();
     private readonly TextBox _publishTarget = new();
     private AppSession? _session;
     private string? _lastPackageDirectory;
@@ -29,17 +32,20 @@ public sealed class ExportPage : UserControl
         if (_session is null)
         {
             _projectPath.Text = "项目：未打开";
-            _counts.Text = string.Empty;
+            foreach (var label in new[] { _trainGoodCount, _testGoodCount, _testNgCount, _ignoredCount }) label.Text = "0 张";
             return;
         }
         var counts = _session.Repository.GetCounts();
         _projectPath.Text = $"项目目录：{_session.ProjectDirectory}\n导出目录：{Path.Combine(_session.ProjectDirectory, "exports")}";
-        _counts.Text = $"Train GOOD    {counts.TrainGood}\nTest GOOD     {counts.TestGood}\nTest NG       {counts.TestNg}\n未分类         {counts.Unclassified}";
+        _trainGoodCount.Text = $"{counts.TrainGood} 张";
+        _testGoodCount.Text = $"{counts.TestGood} 张";
+        _testNgCount.Text = $"{counts.TestNg} 张";
+        _ignoredCount.Text = $"{counts.Ignored} 张";
     }
 
     private void BuildLayout()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(24) };
+        var panel = UiTheme.CreateCard(new Padding(24));
 
         var layout = new TableLayoutPanel
         {
@@ -56,6 +62,7 @@ public sealed class ExportPage : UserControl
         _projectPath.AutoSize = false;
         _projectPath.Dock = DockStyle.Fill;
         _projectPath.ForeColor = UiTheme.TextSecondary;
+        _projectPath.Font = UiTheme.CreateFont(9F);
         UiTheme.AddRow(layout, _projectPath, SizeType.Absolute, 52, new Padding(0, 0, 0, 14));
 
         UiTheme.AddRow(layout, BuildGeneratedCountsPanel(), SizeType.Percent, 100F, Padding.Empty);
@@ -65,6 +72,7 @@ public sealed class ExportPage : UserControl
         _lastPackage.AutoSize = false;
         _lastPackage.Dock = DockStyle.Fill;
         _lastPackage.ForeColor = UiTheme.TextSecondary;
+        _lastPackage.Font = UiTheme.CreateFont(9F);
         _lastPackage.Text = "尚未生成本次数据包";
         UiTheme.AddRow(layout, _lastPackage, SizeType.Absolute, 52, new Padding(0, 0, 0, 14));
 
@@ -100,34 +108,62 @@ public sealed class ExportPage : UserControl
         {
             Text = "✅ configs\\<product>.json\n✅ artifacts\\reference\\reference_aligned.png\n✅ dataset_roi_dino\\train\\good\n✅ dataset_roi_dino\\test\\good\n✅ dataset_roi_dino\\test\\ng\n✅ dataset_manifest.csv\n✅ dataset_report.json",
             Dock = DockStyle.Fill,
-            Font = new Font("Consolas", 10.5F),
+            Font = UiTheme.CreateMonoFont(9.5F),
             ForeColor = UiTheme.TextPrimary,
             TextAlign = ContentAlignment.TopLeft
         };
 
-        var countsTitle = UiTheme.CreateFieldLabel("数据统计");
-        _counts.Dock = DockStyle.Fill;
-        _counts.Font = new Font("Consolas", 10.5F);
-        _counts.ForeColor = UiTheme.TextPrimary;
-        _counts.TextAlign = ContentAlignment.TopLeft;
-
-        var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, BackColor = UiTheme.Surface };
+        var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(0, 0, 8, 0), Padding = new Padding(14), BackColor = UiTheme.SurfaceSoft };
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         left.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         left.Controls.Add(generatedTitle, 0, 0);
         left.Controls.Add(generated, 0, 1);
 
-        var right = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(32, 0, 0, 0), BackColor = UiTheme.Surface };
-        right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        right.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        right.Controls.Add(countsTitle, 0, 0);
-        right.Controls.Add(_counts, 0, 1);
+        var right = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = new Padding(8, 0, 0, 0), Padding = new Padding(8), BackColor = UiTheme.SurfaceSoft };
+        right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+        right.Controls.Add(BuildMetric("Train GOOD", _trainGoodCount, UiTheme.Success), 0, 0);
+        right.Controls.Add(BuildMetric("Test GOOD", _testGoodCount, Color.FromArgb(3, 105, 161)), 1, 0);
+        right.Controls.Add(BuildMetric("Test NG", _testNgCount, UiTheme.Danger), 0, 1);
+        right.Controls.Add(BuildMetric("Ignore", _ignoredCount, UiTheme.TextMuted), 1, 1);
 
         table.Controls.Add(left, 0, 0);
         table.Controls.Add(right, 1, 0);
         return table;
+    }
+
+    private static Control BuildMetric(string caption, Label value, Color valueColor)
+    {
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(6),
+            Padding = new Padding(8, 5, 8, 5),
+            BackColor = UiTheme.Surface
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 44F));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 56F));
+        var title = new Label
+        {
+            Text = caption,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.BottomLeft,
+            ForeColor = UiTheme.TextMuted,
+            Font = UiTheme.CreateFont(8F)
+        };
+        value.Dock = DockStyle.Fill;
+        value.Text = "0 张";
+        value.TextAlign = ContentAlignment.TopLeft;
+        value.ForeColor = valueColor;
+        value.Font = UiTheme.CreateFont(12F, FontStyle.Bold);
+        panel.Controls.Add(title, 0, 0);
+        panel.Controls.Add(value, 0, 1);
+        return panel;
     }
 
     private Control BuildActionButtonsPanel()
@@ -174,10 +210,7 @@ public sealed class ExportPage : UserControl
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116F));
 
         _publishTarget.PlaceholderText = @"例如 D:\Brunei";
-        _publishTarget.BorderStyle = BorderStyle.FixedSingle;
-        _publishTarget.BackColor = UiTheme.Surface;
-        _publishTarget.ForeColor = UiTheme.TextPrimary;
-        _publishTarget.Font = new Font("Microsoft YaHei UI", 10F);
+        UiTheme.StyleTextBox(_publishTarget);
         _publishTarget.AutoSize = false;
         _publishTarget.Dock = DockStyle.Fill;
         _publishTarget.Margin = new Padding(0, 0, 8, 0);

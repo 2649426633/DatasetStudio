@@ -9,9 +9,12 @@ public sealed class RoiCalibrationPage : UserControl
     private readonly DataGridView _grid = new();
     private readonly Label _referenceLabel = new();
     private readonly Label _modeLabel = new();
+    private readonly Dictionary<Button, (RoiKind? Kind, Color ActiveColor, Color BorderColor)> _toolButtons = new();
     private AppSession? _session;
     private List<RoiDefinition> _rois = new();
     private bool _syncingSelection;
+    private RoiKind? _activeToolMode;
+    private TableLayoutPanel? _workArea;
 
     public RoiCalibrationPage()
     {
@@ -31,104 +34,175 @@ public sealed class RoiCalibrationPage : UserControl
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
-            RowCount = 1,
+            ColumnCount = 1,
+            RowCount = 2,
             BackColor = UiTheme.WindowBackground,
             Margin = Padding.Empty
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 460F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        root.Controls.Add(BuildToolbar(), 0, 0);
 
-        root.Controls.Add(BuildToolPanel(), 0, 0);
-        var viewerPanel = new Panel
+        _workArea = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(1),
-            Margin = new Padding(10, 0, 10, 0)
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(0, 12, 0, 0),
+            Margin = Padding.Empty,
+            BackColor = UiTheme.WindowBackground
         };
+        _workArea.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        _workArea.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 440F));
+        var viewerPanel = UiTheme.CreateCard(new Padding(1));
+        viewerPanel.Margin = new Padding(0, 0, 12, 0);
         viewerPanel.Controls.Add(_canvas);
-        root.Controls.Add(viewerPanel, 1, 0);
-        root.Controls.Add(BuildGridPanel(), 2, 0);
+        _workArea.Controls.Add(viewerPanel, 0, 0);
+        _workArea.Controls.Add(BuildGridPanel(), 1, 0);
+        root.Controls.Add(_workArea, 0, 1);
         Controls.Add(root);
+        Resize += (_, _) => ApplyResponsiveLayout();
+        ApplyResponsiveLayout();
     }
 
-    private Control BuildToolPanel()
+    internal void ApplyResponsiveLayout()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(14) };
+        if (_workArea is null || ClientSize.Width <= 0) return;
+        var dpi = Math.Max(1F, DeviceDpi / 96F);
+        var width = ClientSize.Width;
+        var logicalWidth = width / dpi;
+        var compact = logicalWidth < 1120F;
+        var gridWidth = Math.Clamp(width * 0.31F, 380F * dpi, 520F * dpi);
+        var minimumViewer = 420F * dpi;
+        if (width - gridWidth < minimumViewer)
+            gridWidth = Math.Max(320F * dpi, width - minimumViewer);
+        _workArea.ColumnStyles[1].Width = gridWidth;
 
-        var layout = new TableLayoutPanel
+        _modeLabel.Visible = !compact;
+        _referenceLabel.Visible = !compact;
+        var toolWidth = (compact ? 88 : 100) * dpi;
+        foreach (var button in _toolButtons.Keys)
+            button.Width = (int)toolWidth;
+    }
+
+    private Control BuildToolbar()
+    {
+        var toolbar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = new Padding(12, 0, 8, 0),
+            BackColor = UiTheme.Surface
+        };
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var tools = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
             Margin = Padding.Empty,
             BackColor = UiTheme.Surface
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-
-        var title = UiTheme.CreateSectionTitle("ROI 工具");
-        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 10));
-
-        var reference = UiTheme.CreateButton("选择参考图", true);
-        reference.Dock = DockStyle.Fill;
-        reference.Click += (_, _) => SelectReferenceImage();
-        UiTheme.AddRow(layout, reference, SizeType.Absolute, 36);
-
-        _referenceLabel.AutoSize = false;
-        _referenceLabel.Dock = DockStyle.Fill;
-        _referenceLabel.ForeColor = UiTheme.TextMuted;
-        _referenceLabel.TextAlign = ContentAlignment.TopLeft;
-        UiTheme.AddRow(layout, _referenceLabel, SizeType.Absolute, 52, new Padding(0, 4, 0, 4));
-
-        var hint = UiTheme.CreateMutedText("ROI 只能画在\nreference_aligned.png\n标准坐标系上");
-        hint.AutoSize = true;
-        hint.TextAlign = ContentAlignment.TopLeft;
-        UiTheme.AddRow(layout, hint, SizeType.AutoSize, 0, new Padding(0, 0, 0, 10));
-
-        var buttons = new[]
+        var toolsLabel = new Label
         {
-            ("S  应有螺丝", RoiKind.ScrewSlot),
-            ("E  应为空位", RoiKind.EmptySlot),
-            ("P  弹簧区域", RoiKind.SpringRegion),
-            ("A  通用异常", RoiKind.AnomalyRegion)
+            Text = "标定工具：",
+            AutoSize = false,
+            Size = new Size(76, 49),
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = UiTheme.TextMuted,
+            Font = UiTheme.CreateFont(9F, FontStyle.Bold),
+            Margin = Padding.Empty
         };
-        foreach (var (text, kind) in buttons)
-        {
-            var button = UiTheme.CreateButton(text);
-            button.Dock = DockStyle.Fill;
-            button.Click += (_, _) => SetCreateMode(kind);
-            UiTheme.AddRow(layout, button, SizeType.Absolute, 38, new Padding(0, 0, 0, 6));
-        }
+        tools.Controls.Add(toolsLabel);
+        tools.Controls.Add(CreateToolButton("选择 / 移动", null, UiTheme.Accent, UiTheme.Border));
+        tools.Controls.Add(CreateToolButton("螺丝孔 (S)", RoiKind.ScrewSlot, UiTheme.Success, Color.FromArgb(187, 247, 208)));
+        tools.Controls.Add(CreateToolButton("空位 (E)", RoiKind.EmptySlot, Color.FromArgb(217, 119, 6), Color.FromArgb(253, 230, 138)));
+        tools.Controls.Add(CreateToolButton("弹簧区 (P)", RoiKind.SpringRegion, Color.FromArgb(126, 34, 206), Color.FromArgb(233, 213, 255)));
+        tools.Controls.Add(CreateToolButton("异常区 (A)", RoiKind.AnomalyRegion, UiTheme.Danger, Color.FromArgb(254, 202, 202)));
 
-        var selectMode = UiTheme.CreateButton("选择 / 移动");
-        selectMode.Dock = DockStyle.Fill;
-        selectMode.Click += (_, _) =>
+        var actions = new FlowLayoutPanel
         {
-            _canvas.PendingCreateKind = null;
-            _modeLabel.Text = "模式：选择 / 移动";
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
         };
-        UiTheme.AddRow(layout, selectMode, SizeType.Absolute, 38);
-
         _modeLabel.AutoSize = false;
-        _modeLabel.Dock = DockStyle.Fill;
+        _modeLabel.Size = new Size(126, 49);
         _modeLabel.Text = "模式：选择 / 移动";
         _modeLabel.ForeColor = UiTheme.TextSecondary;
-        _modeLabel.TextAlign = ContentAlignment.TopLeft;
-        UiTheme.AddRow(layout, _modeLabel, SizeType.Absolute, 34, new Padding(0, 4, 0, 10));
+        _modeLabel.Font = UiTheme.CreateFont(8.5F, FontStyle.Bold);
+        _modeLabel.TextAlign = ContentAlignment.MiddleRight;
+        _modeLabel.Margin = Padding.Empty;
 
-        var help = UiTheme.CreateMutedText("滚轮：缩放\n中键/右键：平移\n拖四角：缩放 ROI\n方向键：1px\nShift+方向键：10px");
-        help.Dock = DockStyle.Fill;
-        help.TextAlign = ContentAlignment.TopLeft;
-        UiTheme.AddRow(layout, help, SizeType.Percent, 100F, new Padding(0, 0, 0, 0));
+        _referenceLabel.AutoSize = false;
+        _referenceLabel.Size = new Size(160, 49);
+        _referenceLabel.ForeColor = UiTheme.TextMuted;
+        _referenceLabel.Font = UiTheme.CreateFont(8.5F);
+        _referenceLabel.TextAlign = ContentAlignment.MiddleRight;
+        _referenceLabel.AutoEllipsis = true;
+        _referenceLabel.Margin = new Padding(8, 0, 8, 0);
 
-        panel.Controls.Add(layout);
-        return panel;
+        var reference = UiTheme.CreateButton("更换参考图");
+        reference.Size = new Size(118, 32);
+        reference.Margin = new Padding(0, 8, 0, 0);
+        reference.Click += (_, _) => SelectReferenceImage();
+        actions.Controls.Add(_modeLabel);
+        actions.Controls.Add(_referenceLabel);
+        actions.Controls.Add(reference);
+
+        toolbar.Controls.Add(tools, 0, 0);
+        toolbar.Controls.Add(actions, 1, 0);
+        return toolbar;
+    }
+
+    private Button CreateToolButton(string text, RoiKind? kind, Color activeColor, Color borderColor)
+    {
+        var button = UiTheme.CreateButton(text);
+        button.Size = new Size(kind is RoiKind.SpringRegion or RoiKind.AnomalyRegion ? 104 : 100, 32);
+        button.Margin = new Padding(0, 8, 6, 0);
+        _toolButtons[button] = (kind, activeColor, borderColor);
+        button.Click += (_, _) =>
+        {
+            if (kind.HasValue)
+            {
+                SetCreateMode(kind.Value);
+            }
+            else
+            {
+                _canvas.PendingCreateKind = null;
+                _activeToolMode = null;
+                _modeLabel.Text = "模式：选择 / 移动";
+                RefreshToolButtons();
+            }
+        };
+        RefreshToolButtons();
+        return button;
+    }
+
+    private void RefreshToolButtons()
+    {
+        foreach (var (button, state) in _toolButtons)
+        {
+            var active = state.Kind == _activeToolMode;
+            button.BackColor = active ? state.ActiveColor : UiTheme.Surface;
+            button.ForeColor = active ? Color.White : state.ActiveColor;
+            button.Font = UiTheme.CreateFont(8.5F, active ? FontStyle.Bold : FontStyle.Regular);
+            button.FlatAppearance.BorderColor = active ? state.ActiveColor : state.BorderColor;
+            button.FlatAppearance.MouseOverBackColor = active ? state.ActiveColor : UiTheme.SurfaceHover;
+        }
     }
 
     private Control BuildGridPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(14) };
+        var panel = UiTheme.CreateCard(new Padding(15));
 
         var layout = new TableLayoutPanel
         {
@@ -147,18 +221,20 @@ public sealed class RoiCalibrationPage : UserControl
         _grid.ReadOnly = false;
         _grid.MultiSelect = false;
         _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Id", HeaderText = "ID", ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Kind", HeaderText = "Type", ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Expected", HeaderText = "Expected", ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "X", HeaderText = "X" });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Y", HeaderText = "Y" });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "W", HeaderText = "W" });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "H", HeaderText = "H" });
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "Enabled" });
-        foreach (var name in new[] { "Id", "Kind", "Expected", "Enabled" })
-            _grid.Columns[name].AutoSizeMode = DataGridViewAutoSizeColumnMode.DisplayedCells;
-        foreach (var name in new[] { "X", "Y", "W", "H" })
-            _grid.Columns[name].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        _grid.Columns.Add(CreateTextColumn("Id", "ID", 13F, true));
+        _grid.Columns.Add(CreateTextColumn("Kind", "类别", 18F, true));
+        _grid.Columns.Add(CreateTextColumn("Expected", "期望", 18F, true));
+        _grid.Columns.Add(CreateTextColumn("X", "X", 9F));
+        _grid.Columns.Add(CreateTextColumn("Y", "Y", 9F));
+        _grid.Columns.Add(CreateTextColumn("W", "W", 9F));
+        _grid.Columns.Add(CreateTextColumn("H", "H", 9F));
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            Name = "Enabled",
+            HeaderText = "启用",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = 15F
+        });
         UiTheme.AddRow(layout, _grid, SizeType.Percent, 100F, new Padding(0, 0, 0, 10));
 
         var buttons = new TableLayoutPanel
@@ -197,6 +273,16 @@ public sealed class RoiCalibrationPage : UserControl
         panel.Controls.Add(layout);
         return panel;
     }
+
+    private static DataGridViewTextBoxColumn CreateTextColumn(string name, string header, float fillWeight, bool readOnly = false) =>
+        new()
+        {
+            Name = name,
+            HeaderText = header,
+            ReadOnly = readOnly,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            FillWeight = fillWeight
+        };
 
     private void WireEvents()
     {
@@ -251,7 +337,9 @@ public sealed class RoiCalibrationPage : UserControl
             return;
         }
         _canvas.PendingCreateKind = kind;
+        _activeToolMode = kind;
         _modeLabel.Text = $"模式：绘制 {kind}";
+        RefreshToolButtons();
     }
 
     private void CreateRoi(RoiDefinition roi)
@@ -268,7 +356,9 @@ public sealed class RoiCalibrationPage : UserControl
         _session.Repository.SaveRoi(roi);
         _session.WriteProductConfig();
         _canvas.PendingCreateKind = null;
+        _activeToolMode = null;
         _modeLabel.Text = "模式：选择 / 移动";
+        RefreshToolButtons();
         ReloadRois(roi.Id);
     }
 
@@ -338,7 +428,7 @@ public sealed class RoiCalibrationPage : UserControl
     {
         if (_session is null) return;
         _referenceLabel.Text = File.Exists(_session.ReferenceImagePath)
-            ? $"参考图：\n{Path.GetFileName(_session.ReferenceImagePath)}"
+            ? $"参考图：{Path.GetFileName(_session.ReferenceImagePath)}"
             : "参考图：未设置";
         _canvas.LoadImage(File.Exists(_session.ReferenceImagePath) ? _session.ReferenceImagePath : null);
         ReloadRois();
