@@ -8,11 +8,17 @@ namespace DatasetStudio.WinForms.Services;
 /// </summary>
 internal static class OpenCvSharp4Compatibility
 {
+    internal delegate double ContourAreaSelector(
+        IEnumerable<OpenCvSharp.Point> contour,
+        bool oriented);
+
     /// <summary>
     /// Disambiguates Cv2.ContourArea overloads when a Point[][] contour collection is sorted.
+    /// OpenCvSharp exposes ContourArea(contour, oriented = false) as a two-parameter method,
+    /// so the delegate intentionally mirrors that signature.
     /// </summary>
     public static IOrderedEnumerable<OpenCvSharp.Point[]> OrderByDescending(
         this OpenCvSharp.Point[][] source,
-        Func<OpenCvSharp.Point[], double> keySelector) =>
-        System.Linq.Enumerable.OrderByDescending(source, keySelector);
+        ContourAreaSelector keySelector) =>
+        System.Linq.Enumerable.OrderByDescending(source, contour => keySelector(contour, false));
 }
