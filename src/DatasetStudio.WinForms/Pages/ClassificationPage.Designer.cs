@@ -44,7 +44,9 @@ partial class ClassificationPage
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
             components?.Dispose();
+        }
         base.Dispose(disposing);
     }
 
@@ -97,9 +99,9 @@ partial class ClassificationPage
         _categoryTable.SuspendLayout();
         _statsCard.SuspendLayout();
         SuspendLayout();
-        //
+        // 
         // rootLayout
-        //
+        // 
         _rootLayout.BackColor = Color.FromArgb(244, 245, 246);
         _rootLayout.ColumnCount = 3;
         _rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300F));
@@ -110,17 +112,15 @@ partial class ClassificationPage
         _rootLayout.Controls.Add(_classificationCard, 2, 0);
         _rootLayout.Controls.Add(_statsCard, 0, 1);
         _rootLayout.Dock = DockStyle.Fill;
-        _rootLayout.Location = new Point(0, 0);
-        _rootLayout.Margin = Padding.Empty;
+        _rootLayout.Margin = new Padding(0);
         _rootLayout.Name = "rootLayout";
         _rootLayout.RowCount = 2;
         _rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         _rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         _rootLayout.SetColumnSpan(_statsCard, 3);
-        _rootLayout.Size = new Size(1480, 820);
-        //
+        // 
         // imageListCard
-        //
+        // 
         _imageListCard.BackColor = Color.White;
         _imageListCard.BorderColor = Color.FromArgb(218, 220, 222);
         _imageListCard.Controls.Add(_imageListLayout);
@@ -128,9 +128,9 @@ partial class ClassificationPage
         _imageListCard.Margin = new Padding(0, 0, 10, 0);
         _imageListCard.Name = "imageListCard";
         _imageListCard.Padding = new Padding(1);
-        //
+        // 
         // imageListLayout
-        //
+        // 
         _imageListLayout.BackColor = Color.White;
         _imageListLayout.ColumnCount = 1;
         _imageListLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -139,7 +139,7 @@ partial class ClassificationPage
         _imageListLayout.Controls.Add(_onlyUnclassified, 0, 2);
         _imageListLayout.Controls.Add(_imagesList, 0, 3);
         _imageListLayout.Dock = DockStyle.Fill;
-        _imageListLayout.Margin = Padding.Empty;
+        _imageListLayout.Margin = new Padding(0);
         _imageListLayout.Name = "imageListLayout";
         _imageListLayout.Padding = new Padding(14);
         _imageListLayout.RowCount = 4;
@@ -147,9 +147,9 @@ partial class ClassificationPage
         _imageListLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
         _imageListLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
         _imageListLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        //
+        // 
         // imageListHeader
-        //
+        // 
         _imageListHeader.BackColor = Color.White;
         _imageListHeader.ColumnCount = 2;
         _imageListHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -157,22 +157,22 @@ partial class ClassificationPage
         _imageListHeader.Controls.Add(_imageListTitle, 0, 0);
         _imageListHeader.Controls.Add(_rescanButton, 1, 0);
         _imageListHeader.Dock = DockStyle.Fill;
-        _imageListHeader.Margin = Padding.Empty;
+        _imageListHeader.Margin = new Padding(0);
         _imageListHeader.Name = "imageListHeader";
         _imageListHeader.RowCount = 1;
         _imageListHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        //
+        // 
         // imageListTitle
-        //
+        // 
         _imageListTitle.Dock = DockStyle.Fill;
         _imageListTitle.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
         _imageListTitle.ForeColor = Color.FromArgb(32, 32, 32);
         _imageListTitle.Name = "imageListTitle";
         _imageListTitle.Text = "数据 / 图片列表";
         _imageListTitle.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // rescanButton
-        //
+        // 
         _rescanButton.BackColor = Color.White;
         _rescanButton.Cursor = Cursors.Hand;
         _rescanButton.Dock = DockStyle.Fill;
@@ -185,9 +185,9 @@ partial class ClassificationPage
         _rescanButton.Text = "重新扫描";
         _rescanButton.UseVisualStyleBackColor = false;
         _rescanButton.Click += RescanButton_Click;
-        //
+        // 
         // searchBox
-        //
+        // 
         _searchBox.BackColor = Color.White;
         _searchBox.BorderStyle = BorderStyle.FixedSingle;
         _searchBox.Dock = DockStyle.Fill;
@@ -197,9 +197,9 @@ partial class ClassificationPage
         _searchBox.Name = "searchBox";
         _searchBox.PlaceholderText = "按文件名搜索...";
         _searchBox.TextChanged += SearchBox_TextChanged;
-        //
+        // 
         // onlyUnclassified
-        //
+        // 
         _onlyUnclassified.AutoSize = true;
         _onlyUnclassified.Dock = DockStyle.Fill;
         _onlyUnclassified.Font = new Font("Microsoft YaHei UI", 9.5F);
@@ -208,12 +208,12 @@ partial class ClassificationPage
         _onlyUnclassified.Text = "仅未分类";
         _onlyUnclassified.TextAlign = ContentAlignment.MiddleLeft;
         _onlyUnclassified.CheckedChanged += OnlyUnclassified_CheckedChanged;
-        //
+        // 
         // imagesList
-        //
+        // 
         _imagesList.BackColor = Color.White;
         _imagesList.BorderStyle = BorderStyle.FixedSingle;
-        _imagesList.Columns.AddRange(new[] { _fileColumn, _statusColumn });
+        _imagesList.Columns.AddRange(new ColumnHeader[] { _fileColumn, _statusColumn });
         _imagesList.Dock = DockStyle.Fill;
         _imagesList.Font = new Font("Microsoft YaHei UI", 9.5F);
         _imagesList.ForeColor = Color.FromArgb(32, 32, 32);
@@ -230,9 +230,9 @@ partial class ClassificationPage
         _fileColumn.Width = 190;
         _statusColumn.Text = "状态";
         _statusColumn.Width = 90;
-        //
+        // 
         // viewerCard
-        //
+        // 
         _viewerCard.BackColor = Color.White;
         _viewerCard.BorderColor = Color.FromArgb(218, 220, 222);
         _viewerCard.Controls.Add(_canvas);
@@ -240,27 +240,27 @@ partial class ClassificationPage
         _viewerCard.Margin = new Padding(0, 0, 10, 0);
         _viewerCard.Name = "viewerCard";
         _viewerCard.Padding = new Padding(1);
-        //
+        // 
         // canvas
-        //
+        // 
         _canvas.AllowRoiEditing = false;
         _canvas.BackColor = Color.FromArgb(30, 30, 30);
         _canvas.Dock = DockStyle.Fill;
         _canvas.Name = "canvas";
         _canvas.ShowRois = true;
-        //
+        // 
         // classificationCard
-        //
+        // 
         _classificationCard.BackColor = Color.White;
         _classificationCard.BorderColor = Color.FromArgb(218, 220, 222);
         _classificationCard.Controls.Add(_classificationLayout);
         _classificationCard.Dock = DockStyle.Fill;
-        _classificationCard.Margin = Padding.Empty;
+        _classificationCard.Margin = new Padding(0);
         _classificationCard.Name = "classificationCard";
         _classificationCard.Padding = new Padding(17);
-        //
+        // 
         // classificationLayout
-        //
+        // 
         _classificationLayout.AutoScroll = true;
         _classificationLayout.BackColor = Color.White;
         _classificationLayout.ColumnCount = 1;
@@ -278,7 +278,7 @@ partial class ClassificationPage
         _classificationLayout.Controls.Add(_saveNext, 0, 10);
         _classificationLayout.Controls.Add(_helpLabel, 0, 11);
         _classificationLayout.Dock = DockStyle.Fill;
-        _classificationLayout.Margin = Padding.Empty;
+        _classificationLayout.Margin = new Padding(0);
         _classificationLayout.Name = "classificationLayout";
         _classificationLayout.RowCount = 12;
         _classificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
@@ -293,18 +293,18 @@ partial class ClassificationPage
         _classificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 82F));
         _classificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
         _classificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
-        //
+        // 
         // classificationTitle
-        //
+        // 
         _classificationTitle.Dock = DockStyle.Fill;
         _classificationTitle.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
         _classificationTitle.ForeColor = Color.FromArgb(32, 32, 32);
         _classificationTitle.Name = "classificationTitle";
         _classificationTitle.Text = "当前图片信息";
         _classificationTitle.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // metaLayout
-        //
+        // 
         _metaLayout.BackColor = Color.FromArgb(250, 250, 250);
         _metaLayout.ColumnCount = 1;
         _metaLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -317,9 +317,6 @@ partial class ClassificationPage
         _metaLayout.RowCount = 2;
         _metaLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
         _metaLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        //
-        // fileName
-        //
         _fileName.AutoEllipsis = true;
         _fileName.Dock = DockStyle.Fill;
         _fileName.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
@@ -327,9 +324,6 @@ partial class ClassificationPage
         _fileName.Name = "fileName";
         _fileName.Text = "未选择图片";
         _fileName.TextAlign = ContentAlignment.MiddleLeft;
-        //
-        // pathLabel
-        //
         _pathLabel.AutoEllipsis = true;
         _pathLabel.Dock = DockStyle.Fill;
         _pathLabel.Font = new Font("Microsoft YaHei UI", 8.5F);
@@ -337,18 +331,18 @@ partial class ClassificationPage
         _pathLabel.Name = "pathLabel";
         _pathLabel.Text = "请从左侧列表选择图片开始分类";
         _pathLabel.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // categoryLabel
-        //
+        // 
         _categoryLabel.Dock = DockStyle.Fill;
         _categoryLabel.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
         _categoryLabel.ForeColor = Color.FromArgb(64, 64, 64);
         _categoryLabel.Name = "categoryLabel";
         _categoryLabel.Text = "分类";
         _categoryLabel.TextAlign = ContentAlignment.BottomLeft;
-        //
+        // 
         // categoryTable
-        //
+        // 
         _categoryTable.BackColor = Color.White;
         _categoryTable.ColumnCount = 2;
         _categoryTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
@@ -358,31 +352,91 @@ partial class ClassificationPage
         _categoryTable.Controls.Add(_testNg, 0, 1);
         _categoryTable.Controls.Add(_ignore, 1, 1);
         _categoryTable.Dock = DockStyle.Fill;
-        _categoryTable.Margin = Padding.Empty;
+        _categoryTable.Margin = new Padding(0);
         _categoryTable.Name = "categoryTable";
         _categoryTable.RowCount = 2;
         _categoryTable.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
         _categoryTable.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-        ConfigureDesignerCategoryButton(_trainGood, "Train GOOD     T");
-        ConfigureDesignerCategoryButton(_testGood, "Test GOOD      G");
-        ConfigureDesignerCategoryButton(_testNg, "Test NG          N");
-        ConfigureDesignerCategoryButton(_ignore, "Ignore             I");
+        // 
+        // trainGood
+        // 
+        _trainGood.Appearance = Appearance.Button;
+        _trainGood.BackColor = Color.White;
+        _trainGood.Cursor = Cursors.Hand;
+        _trainGood.Dock = DockStyle.Fill;
+        _trainGood.FlatAppearance.BorderColor = Color.FromArgb(218, 220, 222);
+        _trainGood.FlatStyle = FlatStyle.Flat;
+        _trainGood.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+        _trainGood.ForeColor = Color.FromArgb(32, 32, 32);
+        _trainGood.Margin = new Padding(0, 0, 6, 6);
+        _trainGood.Name = "trainGood";
+        _trainGood.Text = "Train GOOD     T";
+        _trainGood.TextAlign = ContentAlignment.MiddleCenter;
+        _trainGood.UseVisualStyleBackColor = false;
         _trainGood.CheckedChanged += Category_CheckedChanged;
+        // 
+        // testGood
+        // 
+        _testGood.Appearance = Appearance.Button;
+        _testGood.BackColor = Color.White;
+        _testGood.Cursor = Cursors.Hand;
+        _testGood.Dock = DockStyle.Fill;
+        _testGood.FlatAppearance.BorderColor = Color.FromArgb(218, 220, 222);
+        _testGood.FlatStyle = FlatStyle.Flat;
+        _testGood.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+        _testGood.ForeColor = Color.FromArgb(32, 32, 32);
+        _testGood.Margin = new Padding(0, 0, 6, 6);
+        _testGood.Name = "testGood";
+        _testGood.Text = "Test GOOD      G";
+        _testGood.TextAlign = ContentAlignment.MiddleCenter;
+        _testGood.UseVisualStyleBackColor = false;
         _testGood.CheckedChanged += Category_CheckedChanged;
+        // 
+        // testNg
+        // 
+        _testNg.Appearance = Appearance.Button;
+        _testNg.BackColor = Color.White;
+        _testNg.Cursor = Cursors.Hand;
+        _testNg.Dock = DockStyle.Fill;
+        _testNg.FlatAppearance.BorderColor = Color.FromArgb(218, 220, 222);
+        _testNg.FlatStyle = FlatStyle.Flat;
+        _testNg.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+        _testNg.ForeColor = Color.FromArgb(32, 32, 32);
+        _testNg.Margin = new Padding(0, 0, 6, 6);
+        _testNg.Name = "testNg";
+        _testNg.Text = "Test NG          N";
+        _testNg.TextAlign = ContentAlignment.MiddleCenter;
+        _testNg.UseVisualStyleBackColor = false;
         _testNg.CheckedChanged += Category_CheckedChanged;
+        // 
+        // ignore
+        // 
+        _ignore.Appearance = Appearance.Button;
+        _ignore.BackColor = Color.White;
+        _ignore.Cursor = Cursors.Hand;
+        _ignore.Dock = DockStyle.Fill;
+        _ignore.FlatAppearance.BorderColor = Color.FromArgb(218, 220, 222);
+        _ignore.FlatStyle = FlatStyle.Flat;
+        _ignore.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+        _ignore.ForeColor = Color.FromArgb(32, 32, 32);
+        _ignore.Margin = new Padding(0, 0, 6, 6);
+        _ignore.Name = "ignore";
+        _ignore.Text = "Ignore             I";
+        _ignore.TextAlign = ContentAlignment.MiddleCenter;
+        _ignore.UseVisualStyleBackColor = false;
         _ignore.CheckedChanged += Category_CheckedChanged;
-        //
+        // 
         // roiTitle
-        //
+        // 
         _roiTitle.Dock = DockStyle.Fill;
         _roiTitle.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
         _roiTitle.ForeColor = Color.FromArgb(64, 64, 64);
         _roiTitle.Name = "roiTitle";
         _roiTitle.Text = "NG 异常 ROI";
         _roiTitle.TextAlign = ContentAlignment.BottomLeft;
-        //
+        // 
         // roiList
-        //
+        // 
         _roiList.BackColor = Color.White;
         _roiList.BorderStyle = BorderStyle.FixedSingle;
         _roiList.CheckOnClick = true;
@@ -391,18 +445,18 @@ partial class ClassificationPage
         _roiList.ForeColor = Color.FromArgb(32, 32, 32);
         _roiList.Margin = new Padding(0, 0, 0, 8);
         _roiList.Name = "roiList";
-        //
+        // 
         // defectTitle
-        //
+        // 
         _defectTitle.Dock = DockStyle.Fill;
         _defectTitle.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
         _defectTitle.ForeColor = Color.FromArgb(64, 64, 64);
         _defectTitle.Name = "defectTitle";
         _defectTitle.Text = "缺陷类型";
         _defectTitle.TextAlign = ContentAlignment.BottomLeft;
-        //
+        // 
         // defectType
-        //
+        // 
         _defectType.BackColor = Color.White;
         _defectType.Dock = DockStyle.Fill;
         _defectType.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -411,18 +465,18 @@ partial class ClassificationPage
         _defectType.ForeColor = Color.FromArgb(32, 32, 32);
         _defectType.Margin = new Padding(0, 0, 0, 8);
         _defectType.Name = "defectType";
-        //
+        // 
         // noteTitle
-        //
+        // 
         _noteTitle.Dock = DockStyle.Fill;
         _noteTitle.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
         _noteTitle.ForeColor = Color.FromArgb(64, 64, 64);
         _noteTitle.Name = "noteTitle";
         _noteTitle.Text = "备注";
         _noteTitle.TextAlign = ContentAlignment.BottomLeft;
-        //
+        // 
         // note
-        //
+        // 
         _note.BackColor = Color.White;
         _note.BorderStyle = BorderStyle.FixedSingle;
         _note.Dock = DockStyle.Fill;
@@ -432,9 +486,9 @@ partial class ClassificationPage
         _note.Multiline = true;
         _note.Name = "note";
         _note.ScrollBars = ScrollBars.Vertical;
-        //
+        // 
         // saveNext
-        //
+        // 
         _saveNext.BackColor = Color.FromArgb(32, 32, 32);
         _saveNext.Cursor = Cursors.Hand;
         _saveNext.Dock = DockStyle.Fill;
@@ -447,18 +501,18 @@ partial class ClassificationPage
         _saveNext.Text = "保存 + 下一张";
         _saveNext.UseVisualStyleBackColor = false;
         _saveNext.Click += SaveNext_Click;
-        //
+        // 
         // helpLabel
-        //
+        // 
         _helpLabel.Dock = DockStyle.Fill;
         _helpLabel.Font = new Font("Microsoft YaHei UI", 9F);
         _helpLabel.ForeColor = Color.FromArgb(92, 92, 92);
         _helpLabel.Name = "helpLabel";
         _helpLabel.Text = "快捷键：T/G/N/I 分类 · 1-9 ROI · Enter 保存 · Space 下一张未分类 · ←/→ 切换";
         _helpLabel.TextAlign = ContentAlignment.TopLeft;
-        //
+        // 
         // statsCard
-        //
+        // 
         _statsCard.BackColor = Color.White;
         _statsCard.BorderColor = Color.FromArgb(218, 220, 222);
         _statsCard.Controls.Add(_stats);
@@ -466,9 +520,9 @@ partial class ClassificationPage
         _statsCard.Margin = new Padding(0, 10, 0, 0);
         _statsCard.Name = "statsCard";
         _statsCard.Padding = new Padding(1);
-        //
+        // 
         // stats
-        //
+        // 
         _stats.BackColor = Color.White;
         _stats.Dock = DockStyle.Fill;
         _stats.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
@@ -477,9 +531,9 @@ partial class ClassificationPage
         _stats.Padding = new Padding(14, 0, 0, 0);
         _stats.Text = "尚未打开项目";
         _stats.TextAlign = ContentAlignment.MiddleLeft;
-        //
+        // 
         // ClassificationPage
-        //
+        // 
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(244, 245, 246);
@@ -500,21 +554,5 @@ partial class ClassificationPage
         _categoryTable.ResumeLayout(false);
         _statsCard.ResumeLayout(false);
         ResumeLayout(false);
-    }
-
-    private static void ConfigureDesignerCategoryButton(RadioButton radio, string text)
-    {
-        radio.Appearance = Appearance.Button;
-        radio.BackColor = Color.White;
-        radio.Cursor = Cursors.Hand;
-        radio.Dock = DockStyle.Fill;
-        radio.FlatAppearance.BorderColor = Color.FromArgb(218, 220, 222);
-        radio.FlatStyle = FlatStyle.Flat;
-        radio.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-        radio.ForeColor = Color.FromArgb(32, 32, 32);
-        radio.Margin = new Padding(0, 0, 6, 6);
-        radio.Text = text;
-        radio.TextAlign = ContentAlignment.MiddleCenter;
-        radio.UseVisualStyleBackColor = false;
     }
 }
