@@ -1,5 +1,7 @@
 # DatasetStudio
 
+![build](https://github.com/2649426633/DatasetStudio/actions/workflows/build.yml/badge.svg)
+
 面向工业视觉数据准备的 WinForms 数据集工具。界面布局、浅色工业主题和品牌风格参考同账号仓库 `IAD26`，业务按 DatasetStudio 自己的职责重新设计。
 
 ## 开发环境
