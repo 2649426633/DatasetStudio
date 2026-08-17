@@ -3,19 +3,15 @@ using DatasetStudio.Infrastructure;
 
 namespace DatasetStudio.WinForms.Pages;
 
-public sealed class ValidationPage : UserControl
+public sealed partial class ValidationPage : UserControl
 {
-    private readonly DataGridView _grid = new();
-    private readonly Label _summary = new();
-    private readonly Label _summaryDetail = new();
-    private readonly Label _summaryIcon = new();
-    private CardPanel? _summaryCard;
     private AppSession? _session;
 
     public ValidationPage()
     {
-        BackColor = UiTheme.WindowBackground;
-        BuildLayout();
+        InitializeComponent();
+        UiTheme.StyleDataGridView(_grid);
+        ApplySummaryStyle(UiTheme.TextSecondary, UiTheme.SurfaceSoft, UiTheme.Border, "—");
     }
 
     public void BindSession(AppSession session)
@@ -82,105 +78,10 @@ public sealed class ValidationPage : UserControl
         }
     }
 
-    private void BuildLayout()
-    {
-        var root = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            BackColor = UiTheme.WindowBackground
-        };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108F));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-        _summaryCard = UiTheme.CreateCard(new Padding(16));
-        _summaryCard.Margin = new Padding(0, 0, 0, 12);
-        var summaryLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 3,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            BackColor = Color.Transparent
-        };
-        summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58F));
-        summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        summaryLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132F));
-        summaryLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 54F));
-        summaryLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 46F));
-
-        _summaryIcon.Dock = DockStyle.Fill;
-        _summaryIcon.TextAlign = ContentAlignment.MiddleCenter;
-        _summaryIcon.Font = UiTheme.CreateFont(22F, FontStyle.Bold);
-        _summaryIcon.Margin = new Padding(0, 0, 12, 0);
-        summaryLayout.Controls.Add(_summaryIcon, 0, 0);
-        summaryLayout.SetRowSpan(_summaryIcon, 2);
-
-        _summary.AutoSize = false;
-        _summary.Dock = DockStyle.Fill;
-        _summary.TextAlign = ContentAlignment.BottomLeft;
-        _summary.Font = UiTheme.CreateFont(13F, FontStyle.Bold);
-        _summaryDetail.AutoSize = false;
-        _summaryDetail.Dock = DockStyle.Fill;
-        _summaryDetail.TextAlign = ContentAlignment.TopLeft;
-        _summaryDetail.Font = UiTheme.CreateFont(9F);
-        summaryLayout.Controls.Add(_summary, 1, 0);
-        summaryLayout.Controls.Add(_summaryDetail, 1, 1);
-
-        var run = UiTheme.CreateButton("重新校验", true);
-        run.Size = new Size(120, 36);
-        run.Anchor = AnchorStyles.Right;
-        run.Click += (_, _) => RunValidation();
-        summaryLayout.Controls.Add(run, 2, 0);
-        summaryLayout.SetRowSpan(run, 2);
-        _summaryCard.Controls.Add(summaryLayout);
-
-        var gridCard = UiTheme.CreateCard(new Padding(1));
-        var gridLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            BackColor = UiTheme.Surface
-        };
-        gridLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
-        gridLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        var gridHeader = new Label
-        {
-            Text = "数据完整性与规则校验项",
-            Dock = DockStyle.Fill,
-            Padding = new Padding(16, 0, 0, 0),
-            TextAlign = ContentAlignment.MiddleLeft,
-            BackColor = UiTheme.SurfaceSoft,
-            ForeColor = UiTheme.TextPrimary,
-            Font = UiTheme.CreateFont(10.5F, FontStyle.Bold)
-        };
-
-        UiTheme.StyleDataGridView(_grid);
-        _grid.Dock = DockStyle.Fill;
-        _grid.ReadOnly = true;
-        _grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "State", HeaderText = "状态", Width = 70 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Check", HeaderText = "检查项", Width = 220 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Value", HeaderText = "数量", Width = 90 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Message", HeaderText = "说明", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
-        gridLayout.Controls.Add(gridHeader, 0, 0);
-        gridLayout.Controls.Add(_grid, 0, 1);
-        gridCard.Controls.Add(gridLayout);
-
-        root.Controls.Add(_summaryCard, 0, 0);
-        root.Controls.Add(gridCard, 0, 1);
-        Controls.Add(root);
-        ApplySummaryStyle(UiTheme.TextSecondary, UiTheme.SurfaceSoft, UiTheme.Border, "—");
-    }
+    private void RunButton_Click(object? sender, EventArgs e) => RunValidation();
 
     private void ApplySummaryStyle(Color foreground, Color background, Color border, string icon)
     {
-        if (_summaryCard is null) return;
         _summaryCard.BackColor = background;
         _summaryCard.BorderColor = border;
         _summaryCard.Invalidate();

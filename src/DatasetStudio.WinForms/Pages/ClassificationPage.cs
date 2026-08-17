@@ -1,35 +1,19 @@
 using DatasetStudio.Core;
-using DatasetStudio.WinForms.Controls;
 
 namespace DatasetStudio.WinForms.Pages;
 
-public sealed class ClassificationPage : UserControl
+public sealed partial class ClassificationPage : UserControl
 {
-    private readonly ListView _imagesList = new();
-    private readonly ImageCanvas _canvas = new() { Dock = DockStyle.Fill };
-    private readonly Label _fileName = new();
-    private readonly Label _pathLabel = new();
-    private readonly RadioButton _trainGood = new() { Text = "Train GOOD" };
-    private readonly RadioButton _testGood = new() { Text = "Test GOOD" };
-    private readonly RadioButton _testNg = new() { Text = "Test NG" };
-    private readonly RadioButton _ignore = new() { Text = "Ignore" };
-    private readonly CheckedListBox _roiList = new();
-    private readonly ComboBox _defectType = new();
-    private readonly TextBox _note = new();
-    private readonly Label _stats = new();
-    private readonly CheckBox _onlyUnclassified = new() { Text = "仅未分类" };
-    private readonly TextBox _searchBox = new() { PlaceholderText = "按文件名搜索..." };
-    private readonly Button _saveNext = UiTheme.CreateButton("保存 + 下一张", true);
-    private TableLayoutPanel? _rootLayout;
     private AppSession? _session;
     private List<ImageRecord> _images = new();
     private bool _loading;
 
     public ClassificationPage()
     {
-        BackColor = UiTheme.WindowBackground;
-        BuildLayout();
-        WireEvents();
+        InitializeComponent();
+        ConfigureRuntimeStyles();
+        UpdateNgControls();
+        ApplyResponsiveLayout();
     }
 
     public void BindSession(AppSession session)
@@ -64,232 +48,81 @@ public sealed class ClassificationPage : UserControl
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private void BuildLayout()
-    {
-        _rootLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 3,
-            RowCount = 2,
-            BackColor = UiTheme.WindowBackground,
-            Margin = Padding.Empty
-        };
-        _rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300F));
-        _rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        _rootLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 360F));
-        _rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        _rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-
-        _rootLayout.Controls.Add(BuildImageListPanel(), 0, 0);
-        _rootLayout.Controls.Add(BuildViewerPanel(), 1, 0);
-        _rootLayout.Controls.Add(BuildClassificationPanel(), 2, 0);
-
-        _stats.Dock = DockStyle.Fill;
-        _stats.TextAlign = ContentAlignment.MiddleLeft;
-        _stats.Padding = new Padding(14, 0, 0, 0);
-        _stats.BackColor = UiTheme.Surface;
-        _stats.ForeColor = UiTheme.TextSecondary;
-        _stats.Font = UiTheme.CreateFont(9F, FontStyle.Bold);
-        var statsCard = UiTheme.CreateCard(new Padding(1));
-        statsCard.Margin = new Padding(0, 10, 0, 0);
-        statsCard.Controls.Add(_stats);
-        _rootLayout.Controls.Add(statsCard, 0, 1);
-        _rootLayout.SetColumnSpan(statsCard, 3);
-        Controls.Add(_rootLayout);
-        Resize += (_, _) => ApplyResponsiveLayout();
-        ApplyResponsiveLayout();
-    }
-
     internal void ApplyResponsiveLayout()
     {
-        if (_rootLayout is null || ClientSize.Width <= 0) return;
+        if (ClientSize.Width <= 0 || _rootLayout.ColumnStyles.Count < 3) return;
         var dpi = Math.Max(1F, DeviceDpi / 96F);
         var width = ClientSize.Width;
-        var left = Math.Clamp(width * 0.22F, 250F * dpi, 340F * dpi);
-        var right = Math.Clamp(width * 0.25F, 320F * dpi, 410F * dpi);
+        var left = Math.Clamp(width * 0.22F, 270F * dpi, 400F * dpi);
+        var right = Math.Clamp(width * 0.25F, 320F * dpi, 420F * dpi);
         var minimumViewer = 300F * dpi;
         if (left + right + minimumViewer > width)
         {
             var availableForSides = Math.Max(0F, width - minimumViewer);
-            left = availableForSides * 0.44F;
-            right = availableForSides * 0.56F;
+            left = availableForSides * 0.46F;
+            right = availableForSides * 0.54F;
         }
 
         _rootLayout.ColumnStyles[0].Width = left;
         _rootLayout.ColumnStyles[2].Width = right;
+
+        var listWidth = Math.Max(0, _imagesList.ClientSize.Width);
+        if (listWidth > 160 && _imagesList.Columns.Count >= 2)
+        {
+            var statusWidth = (int)Math.Round(96F * dpi);
+            _imagesList.Columns[1].Width = statusWidth;
+            _imagesList.Columns[0].Width = Math.Max((int)(120F * dpi), listWidth - statusWidth - 6);
+        }
     }
 
-    private Control BuildImageListPanel()
+    private void ConfigureRuntimeStyles()
     {
-        var card = UiTheme.CreateCard(new Padding(1));
-        card.Margin = new Padding(0, 0, 10, 0);
-        var panel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4,
-            BackColor = UiTheme.Surface,
-            Padding = new Padding(14),
-            Margin = Padding.Empty
-        };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-        var header = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = Padding.Empty,
-            BackColor = UiTheme.Surface
-        };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-        var title = UiTheme.CreateSectionTitle("数据 / 图片列表");
-        title.Dock = DockStyle.Fill;
-        title.TextAlign = ContentAlignment.MiddleLeft;
-        var rescan = UiTheme.CreateButton("重新扫描");
-        rescan.Size = new Size(96, 30);
-        rescan.Margin = new Padding(8, 0, 0, 0);
-        rescan.Click += (_, _) => Rescan();
-        header.Controls.Add(title, 0, 0);
-        header.Controls.Add(rescan, 1, 0);
-
-        UiTheme.StyleTextBox(_searchBox);
-        _searchBox.Dock = DockStyle.Fill;
-        _searchBox.Margin = new Padding(0, 4, 0, 4);
-        _searchBox.TextChanged += (_, _) => ReloadList();
-
-        _onlyUnclassified.AutoSize = true;
-        _onlyUnclassified.Dock = DockStyle.Fill;
-        _onlyUnclassified.TextAlign = ContentAlignment.MiddleLeft;
-        UiTheme.StyleOptionButton(_onlyUnclassified);
-        _onlyUnclassified.CheckedChanged += (_, _) => ReloadList();
-
-        _imagesList.View = View.Details;
         UiTheme.StyleListView(_imagesList, darkSelection: true);
-        _imagesList.Columns.Add("文件", 150);
-        _imagesList.Columns.Add("状态", 90);
-        _imagesList.Dock = DockStyle.Fill;
-        _imagesList.Margin = new Padding(0, 6, 0, 0);
-
-        panel.Controls.Add(header, 0, 0);
-        panel.Controls.Add(_searchBox, 0, 1);
-        panel.Controls.Add(_onlyUnclassified, 0, 2);
-        panel.Controls.Add(_imagesList, 0, 3);
-        card.Controls.Add(panel);
-        return card;
-    }
-
-    private Control BuildViewerPanel()
-    {
-        var panel = UiTheme.CreateCard(new Padding(1));
-        panel.Margin = new Padding(0, 0, 10, 0);
-        _canvas.Dock = DockStyle.Fill;
-        _canvas.AllowRoiEditing = false;
-        _canvas.ShowRois = true;
-        panel.Controls.Add(_canvas);
-        return panel;
-    }
-
-    private Control BuildClassificationPanel()
-    {
-        var panel = UiTheme.CreateCard(new Padding(17));
-
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            AutoScroll = true,
-            Margin = Padding.Empty,
-            BackColor = UiTheme.Surface
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-
-        var title = UiTheme.CreateSectionTitle("当前图片信息");
-        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 8));
-
-        var meta = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Padding = new Padding(10, 6, 10, 6),
-            Margin = Padding.Empty,
-            BackColor = UiTheme.SurfaceSoft
-        };
-        meta.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
-        meta.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        _fileName.AutoSize = false;
-        _fileName.Dock = DockStyle.Fill;
-        _fileName.Font = UiTheme.CreateFont(10F, FontStyle.Bold);
-        _fileName.ForeColor = UiTheme.TextPrimary;
-        _fileName.Text = "未选择图片";
-
-        _pathLabel.AutoSize = false;
-        _pathLabel.Dock = DockStyle.Fill;
-        _pathLabel.ForeColor = UiTheme.TextMuted;
-        _pathLabel.Font = UiTheme.CreateFont(8.5F);
-        _pathLabel.Text = "请从左侧列表选择图片开始分类";
-        meta.Controls.Add(_fileName, 0, 0);
-        meta.Controls.Add(_pathLabel, 0, 1);
-        UiTheme.AddRow(layout, meta, SizeType.Absolute, 64, new Padding(0, 0, 0, 10));
-
-        var category = UiTheme.CreateFieldLabel("分类");
-        UiTheme.AddRow(layout, category, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
-        UiTheme.AddRow(layout, BuildCategorySelector(), SizeType.Absolute, 82);
-
-        var roiTitle = UiTheme.CreateFieldLabel("NG 异常 ROI");
-        UiTheme.AddRow(layout, roiTitle, SizeType.AutoSize, 0, new Padding(0, 10, 0, 4));
-
-        _roiList.CheckOnClick = true;
+        UiTheme.StyleTextBox(_searchBox);
+        UiTheme.StyleOptionButton(_onlyUnclassified);
         UiTheme.StyleCheckedListBox(_roiList);
-        _roiList.Dock = DockStyle.Fill;
-        UiTheme.AddRow(layout, _roiList, SizeType.Absolute, 108, new Padding(0, 0, 0, 8));
-
-        var defectTitle = UiTheme.CreateFieldLabel("缺陷类型");
-        UiTheme.AddRow(layout, defectTitle, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
-
-        _defectType.DropDownStyle = ComboBoxStyle.DropDownList;
-        _defectType.Dock = DockStyle.Fill;
         UiTheme.StyleComboBox(_defectType);
-        _defectType.Items.AddRange(Enum.GetNames<DefectType>().Where(x => x != nameof(DefectType.None)).Cast<object>().ToArray());
-        if (_defectType.Items.Count > 0) _defectType.SelectedIndex = 0;
-        UiTheme.AddRow(layout, _defectType, SizeType.Absolute, 34, new Padding(0, 0, 0, 8));
-
-        var noteTitle = UiTheme.CreateFieldLabel("备注");
-        UiTheme.AddRow(layout, noteTitle, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
-
-        _note.Multiline = true;
-        _note.ScrollBars = ScrollBars.Vertical;
         UiTheme.StyleTextBox(_note);
-        _note.Dock = DockStyle.Fill;
-        UiTheme.AddRow(layout, _note, SizeType.Absolute, 72, new Padding(0, 0, 0, 10));
 
-        _saveNext.Dock = DockStyle.Fill;
-        _saveNext.Margin = Padding.Empty;
-        UiTheme.AddRow(layout, _saveNext, SizeType.Absolute, 40);
+        if (_defectType.Items.Count == 0)
+        {
+            _defectType.Items.AddRange(Enum.GetNames<DefectType>()
+                .Where(x => x != nameof(DefectType.None))
+                .Cast<object>()
+                .ToArray());
+            if (_defectType.Items.Count > 0) _defectType.SelectedIndex = 0;
+        }
 
-        var help = UiTheme.CreateMutedText("快捷键：T/G/N/I 分类 · 1-9 ROI · Enter 保存 · Space 下一张未分类 · ←/→ 切换");
-        help.Dock = DockStyle.Fill;
-        help.TextAlign = ContentAlignment.TopLeft;
-        UiTheme.AddRow(layout, help, SizeType.Absolute, 54, new Padding(0, 10, 0, 0));
-
-        panel.Controls.Add(layout);
-        return panel;
+        RefreshCategoryButtonStyles();
     }
 
-    private void WireEvents()
+    private void ClassificationPage_Resize(object? sender, EventArgs e) => ApplyResponsiveLayout();
+    private void RescanButton_Click(object? sender, EventArgs e) => Rescan();
+    private void SearchBox_TextChanged(object? sender, EventArgs e) => ReloadList();
+    private void OnlyUnclassified_CheckedChanged(object? sender, EventArgs e) => ReloadList();
+    private void ImagesList_SelectedIndexChanged(object? sender, EventArgs e) => ShowSelectedImage();
+    private void SaveNext_Click(object? sender, EventArgs e) => TrySaveCurrent(true);
+
+    private void Category_CheckedChanged(object? sender, EventArgs e)
     {
-        _imagesList.SelectedIndexChanged += (_, _) => ShowSelectedImage();
-        _saveNext.Click += (_, _) => TrySaveCurrent(true);
-        _testNg.CheckedChanged += (_, _) => UpdateNgControls();
-        _trainGood.CheckedChanged += (_, _) => UpdateNgControls();
-        _testGood.CheckedChanged += (_, _) => UpdateNgControls();
-        _ignore.CheckedChanged += (_, _) => UpdateNgControls();
+        RefreshCategoryButtonStyles();
+        UpdateNgControls();
+    }
+
+    private void RefreshCategoryButtonStyles()
+    {
+        ApplyCategoryStyle(_trainGood, Color.FromArgb(21, 128, 61));
+        ApplyCategoryStyle(_testGood, Color.FromArgb(3, 105, 161));
+        ApplyCategoryStyle(_testNg, UiTheme.Danger);
+        ApplyCategoryStyle(_ignore, Color.FromArgb(75, 85, 99));
+    }
+
+    private static void ApplyCategoryStyle(RadioButton radio, Color activeColor)
+    {
+        radio.BackColor = radio.Checked ? activeColor : UiTheme.Surface;
+        radio.ForeColor = radio.Checked ? Color.White : UiTheme.TextPrimary;
+        radio.FlatAppearance.BorderColor = radio.Checked ? activeColor : UiTheme.Border;
+        radio.FlatAppearance.MouseOverBackColor = radio.Checked ? activeColor : UiTheme.SurfaceHover;
     }
 
     private void Rescan()
@@ -374,6 +207,7 @@ public sealed class ClassificationPage : UserControl
         {
             _loading = false;
             UpdateNgControls();
+            RefreshCategoryButtonStyles();
         }
     }
 
@@ -461,58 +295,6 @@ public sealed class ClassificationPage : UserControl
         var enabled = _testNg.Checked;
         _roiList.Enabled = enabled;
         _defectType.Enabled = enabled;
-    }
-
-    private Control BuildCategorySelector()
-    {
-        var table = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 2,
-            Margin = Padding.Empty,
-            BackColor = UiTheme.Surface
-        };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        table.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-        table.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-
-        ConfigureCategoryButton(_trainGood, "Train GOOD     T", Color.FromArgb(21, 128, 61));
-        ConfigureCategoryButton(_testGood, "Test GOOD      G", Color.FromArgb(3, 105, 161));
-        ConfigureCategoryButton(_testNg, "Test NG          N", UiTheme.Danger);
-        ConfigureCategoryButton(_ignore, "Ignore             I", Color.FromArgb(75, 85, 99));
-
-        table.Controls.Add(_trainGood, 0, 0);
-        table.Controls.Add(_testGood, 1, 0);
-        table.Controls.Add(_testNg, 0, 1);
-        table.Controls.Add(_ignore, 1, 1);
-        return table;
-    }
-
-    private static void ConfigureCategoryButton(RadioButton radio, string text, Color activeColor)
-    {
-        radio.Text = text;
-        radio.Appearance = Appearance.Button;
-        radio.AutoSize = false;
-        radio.Dock = DockStyle.Fill;
-        radio.Margin = new Padding(0, 0, 6, 6);
-        radio.FlatStyle = FlatStyle.Flat;
-        radio.TextAlign = ContentAlignment.MiddleCenter;
-        radio.Font = UiTheme.CreateFont(9F, FontStyle.Bold);
-        radio.Cursor = Cursors.Hand;
-        radio.UseVisualStyleBackColor = false;
-
-        void RefreshStyle()
-        {
-            radio.BackColor = radio.Checked ? activeColor : UiTheme.Surface;
-            radio.ForeColor = radio.Checked ? Color.White : UiTheme.TextPrimary;
-            radio.FlatAppearance.BorderColor = radio.Checked ? activeColor : UiTheme.Border;
-            radio.FlatAppearance.MouseOverBackColor = radio.Checked ? activeColor : UiTheme.SurfaceHover;
-        }
-
-        radio.CheckedChanged += (_, _) => RefreshStyle();
-        RefreshStyle();
     }
 
     private void UpdateStats()
