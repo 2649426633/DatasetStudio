@@ -1,6 +1,8 @@
 using System.Text.Json;
 using OpenCvSharp;
 using OpenCvSharp.XFeatures2D;
+using Point = OpenCvSharp.Point;
+using Size = OpenCvSharp.Size;
 
 namespace DatasetStudio.WinForms.Services;
 
