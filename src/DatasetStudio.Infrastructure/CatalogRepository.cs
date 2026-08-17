@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using DatasetStudio.Core;
 using Microsoft.Data.Sqlite;
 
@@ -20,7 +21,9 @@ public sealed class CatalogRepository
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
+            PRAGMA foreign_keys=ON;
             PRAGMA journal_mode=WAL;
+
             CREATE TABLE IF NOT EXISTS Images (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 SourcePath TEXT NOT NULL UNIQUE,
@@ -56,38 +59,74 @@ public sealed class CatalogRepository
                 OldValue TEXT NOT NULL DEFAULT '',
                 NewValue TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE INDEX IF NOT EXISTS IX_Images_Sha256 ON Images(Sha256);
+            CREATE INDEX IF NOT EXISTS IX_Images_SplitTruth ON Images(Split, Truth);
             """;
         command.ExecuteNonQuery();
     }
 
     public int ScanSourceDirectory(string sourceDirectory)
     {
+        if (!Directory.Exists(sourceDirectory))
+            throw new DirectoryNotFoundException(sourceDirectory);
+
         var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".bmp", ".png", ".jpg", ".jpeg", ".tif", ".tiff"
         };
-
         var files = Directory.EnumerateFiles(sourceDirectory, "*.*", SearchOption.TopDirectoryOnly)
             .Where(path => extensions.Contains(Path.GetExtension(path)))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         using var connection = Open();
+        var existing = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "SELECT SourcePath, Sha256 FROM Images;";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+                existing[reader.GetString(0)] = reader.GetString(1);
+        }
+
         using var transaction = connection.BeginTransaction();
         var inserted = 0;
-
         foreach (var file in files)
         {
+            var fullPath = Path.GetFullPath(file);
+            var sha = ComputeSha256(fullPath);
+            existing.TryGetValue(fullPath, out var oldSha);
+
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = """
-                INSERT OR IGNORE INTO Images (SourcePath, FileName, Sha256)
-                VALUES ($path, $name, $sha);
-                """;
-            command.Parameters.AddWithValue("$path", Path.GetFullPath(file));
-            command.Parameters.AddWithValue("$name", Path.GetFileName(file));
-            command.Parameters.AddWithValue("$sha", ComputeSha256(file));
-            inserted += command.ExecuteNonQuery();
+            if (oldSha is null)
+            {
+                command.CommandText = """
+                    INSERT INTO Images (SourcePath, FileName, Sha256)
+                    VALUES ($path, $name, $sha);
+                    """;
+                inserted++;
+            }
+            else if (!string.Equals(oldSha, sha, StringComparison.OrdinalIgnoreCase))
+            {
+                // 同一路径文件内容发生变化时，旧标签不能继续沿用。
+                command.CommandText = """
+                    UPDATE Images
+                    SET FileName=$name, Sha256=$sha, Width=0, Height=0,
+                        Split=0, Truth=0, DefectType=0, DefectRois=''
+                    WHERE SourcePath=$path;
+                    """;
+            }
+            else
+            {
+                command.CommandText = "UPDATE Images SET FileName=$name WHERE SourcePath=$path;";
+            }
+
+            command.Parameters.AddWithValue("$path", fullPath);
+            command.Parameters.AddWithValue("$name", Path.GetFileName(fullPath));
+            command.Parameters.AddWithValue("$sha", sha);
+            command.ExecuteNonQuery();
         }
 
         transaction.Commit();
@@ -104,7 +143,6 @@ public sealed class CatalogRepository
             FROM Images
             ORDER BY FileName COLLATE NOCASE;
             """;
-
         using var reader = command.ExecuteReader();
         var result = new List<ImageRecord>();
         while (reader.Read())
@@ -146,42 +184,88 @@ public sealed class CatalogRepository
         IEnumerable<string> defectRois,
         string note)
     {
-        var old = LoadImage(imageId)?.StatusText ?? string.Empty;
-        var roiText = string.Join('|', defectRois.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
+        var oldImage = LoadImage(imageId) ?? throw new InvalidOperationException($"找不到图片记录: {imageId}");
+        var roiText = string.Join("|",
+            defectRois
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
+        var oldSnapshot = ClassificationSnapshot.From(oldImage);
+        var newSnapshot = new ClassificationSnapshot
+        {
+            Split = split,
+            Truth = truth,
+            DefectType = defectType,
+            DefectRois = roiText,
+            Note = note ?? string.Empty
+        };
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        ApplyClassification(connection, transaction, imageId, newSnapshot);
+
+        using var log = connection.CreateCommand();
+        log.Transaction = transaction;
+        log.CommandText = """
+            INSERT INTO Operations(Time, Operation, ImageId, OldValue, NewValue)
+            VALUES($time, 'Classify', $id, $old, $new);
+            """;
+        log.Parameters.AddWithValue("$time", DateTimeOffset.Now.ToString("O"));
+        log.Parameters.AddWithValue("$id", imageId);
+        log.Parameters.AddWithValue("$old", JsonSerializer.Serialize(oldSnapshot));
+        log.Parameters.AddWithValue("$new", JsonSerializer.Serialize(newSnapshot));
+        log.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    public long? UndoLastClassification()
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+
+        long operationId;
+        long imageId;
+        string oldJson;
         using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
             command.CommandText = """
-                UPDATE Images
-                SET Split=$split, Truth=$truth, DefectType=$type, DefectRois=$rois, Note=$note
-                WHERE Id=$id;
+                SELECT Id, ImageId, OldValue
+                FROM Operations
+                WHERE Operation='Classify' AND ImageId IS NOT NULL
+                ORDER BY Id DESC
+                LIMIT 1;
                 """;
-            command.Parameters.AddWithValue("$split", (int)split);
-            command.Parameters.AddWithValue("$truth", (int)truth);
-            command.Parameters.AddWithValue("$type", (int)defectType);
-            command.Parameters.AddWithValue("$rois", roiText);
-            command.Parameters.AddWithValue("$note", note ?? string.Empty);
-            command.Parameters.AddWithValue("$id", imageId);
-            command.ExecuteNonQuery();
+            using var reader = command.ExecuteReader();
+            if (!reader.Read()) return null;
+            operationId = reader.GetInt64(0);
+            imageId = reader.GetInt64(1);
+            oldJson = reader.GetString(2);
         }
 
-        using (var log = connection.CreateCommand())
+        ClassificationSnapshot? snapshot;
+        try
         {
-            log.Transaction = transaction;
-            log.CommandText = """
-                INSERT INTO Operations(Time, Operation, ImageId, OldValue, NewValue)
-                VALUES($time, 'Classify', $id, $old, $new);
-                """;
-            log.Parameters.AddWithValue("$time", DateTimeOffset.Now.ToString("O"));
-            log.Parameters.AddWithValue("$id", imageId);
-            log.Parameters.AddWithValue("$old", old);
-            log.Parameters.AddWithValue("$new", $"{split}/{truth}/{defectType}/{roiText}");
-            log.ExecuteNonQuery();
+            snapshot = JsonSerializer.Deserialize<ClassificationSnapshot>(oldJson);
+        }
+        catch (JsonException)
+        {
+            // 兼容最早版本仅记录状态文字的 Operations；这类历史记录无法无损回滚。
+            return null;
+        }
+        if (snapshot is null) return null;
+
+        ApplyClassification(connection, transaction, imageId, snapshot);
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM Operations WHERE Id=$id;";
+            delete.Parameters.AddWithValue("$id", operationId);
+            delete.ExecuteNonQuery();
         }
         transaction.Commit();
+        return imageId;
     }
 
     public List<RoiDefinition> LoadRois()
@@ -215,6 +299,11 @@ public sealed class CatalogRepository
 
     public void SaveRoi(RoiDefinition roi)
     {
+        if (string.IsNullOrWhiteSpace(roi.Id))
+            throw new ArgumentException("ROI ID 不能为空。", nameof(roi));
+        if (roi.Width <= 0 || roi.Height <= 0)
+            throw new ArgumentException("ROI 宽高必须大于 0。", nameof(roi));
+
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -226,7 +315,7 @@ public sealed class CatalogRepository
                 Expected=excluded.Expected, ExpectedCount=excluded.ExpectedCount,
                 Enabled=excluded.Enabled;
             """;
-        command.Parameters.AddWithValue("$id", roi.Id);
+        command.Parameters.AddWithValue("$id", roi.Id.Trim());
         command.Parameters.AddWithValue("$kind", (int)roi.Kind);
         command.Parameters.AddWithValue("$x", roi.X);
         command.Parameters.AddWithValue("$y", roi.Y);
@@ -275,10 +364,50 @@ public sealed class CatalogRepository
 
     private ImageRecord? LoadImage(long imageId) => LoadImages().FirstOrDefault(x => x.Id == imageId);
 
+    private static void ApplyClassification(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long imageId,
+        ClassificationSnapshot snapshot)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE Images
+            SET Split=$split, Truth=$truth, DefectType=$type, DefectRois=$rois, Note=$note
+            WHERE Id=$id;
+            """;
+        command.Parameters.AddWithValue("$split", (int)snapshot.Split);
+        command.Parameters.AddWithValue("$truth", (int)snapshot.Truth);
+        command.Parameters.AddWithValue("$type", (int)snapshot.DefectType);
+        command.Parameters.AddWithValue("$rois", snapshot.DefectRois ?? string.Empty);
+        command.Parameters.AddWithValue("$note", snapshot.Note ?? string.Empty);
+        command.Parameters.AddWithValue("$id", imageId);
+        command.ExecuteNonQuery();
+    }
+
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
         return connection;
+    }
+
+    private sealed class ClassificationSnapshot
+    {
+        public DatasetSplit Split { get; set; }
+        public ImageTruth Truth { get; set; }
+        public DefectType DefectType { get; set; }
+        public string DefectRois { get; set; } = string.Empty;
+        public string Note { get; set; } = string.Empty;
+
+        public static ClassificationSnapshot From(ImageRecord image) => new()
+        {
+            Split = image.Split,
+            Truth = image.Truth,
+            DefectType = image.DefectType,
+            DefectRois = image.DefectRois,
+            Note = image.Note
+        };
     }
 }

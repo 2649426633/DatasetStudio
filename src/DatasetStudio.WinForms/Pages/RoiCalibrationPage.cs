@@ -108,9 +108,9 @@ public sealed class RoiCalibrationPage : UserControl
 
         var help = new Label
         {
-            Text = "滚轮：缩放\n中键/右键：平移\n方向键：1px\nShift+方向键：10px",
+            Text = "滚轮：缩放\n中键/右键：平移\n拖四角：缩放 ROI\n方向键：1px\nShift+方向键：10px",
             Location = new Point(14, 526),
-            Size = new Size(148, 90),
+            Size = new Size(148, 110),
             ForeColor = UiTheme.TextMuted
         };
 
@@ -129,21 +129,21 @@ public sealed class RoiCalibrationPage : UserControl
         _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
-        _grid.ReadOnly = true;
+        _grid.ReadOnly = false;
         _grid.MultiSelect = false;
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.RowHeadersVisible = false;
         _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
         _grid.BackgroundColor = UiTheme.Surface;
         _grid.BorderStyle = BorderStyle.FixedSingle;
-        _grid.Columns.Add("Id", "ID");
-        _grid.Columns.Add("Kind", "Type");
-        _grid.Columns.Add("Expected", "Expected");
-        _grid.Columns.Add("X", "X");
-        _grid.Columns.Add("Y", "Y");
-        _grid.Columns.Add("W", "W");
-        _grid.Columns.Add("H", "H");
-        _grid.Columns.Add("Enabled", "Enabled");
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Id", HeaderText = "ID", ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Kind", HeaderText = "Type", ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Expected", HeaderText = "Expected", ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "X", HeaderText = "X" });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Y", HeaderText = "Y" });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "W", HeaderText = "W" });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "H", HeaderText = "H" });
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "Enabled" });
 
         var duplicate = UiTheme.CreateButton("复制 ROI");
         duplicate.Location = new Point(14, 624);
@@ -181,9 +181,10 @@ public sealed class RoiCalibrationPage : UserControl
         {
             if (_syncingSelection || _grid.SelectedRows.Count == 0) return;
             _syncingSelection = true;
-            try { _canvas.SelectRoi(_grid.SelectedRows[0].Cells[0].Value?.ToString()); }
+            try { _canvas.SelectRoi(_grid.SelectedRows[0].Cells["Id"].Value?.ToString()); }
             finally { _syncingSelection = false; }
         };
+        _grid.CellEndEdit += (_, e) => ApplyGridEdit(e.RowIndex);
     }
 
     private void SelectReferenceImage()
@@ -242,15 +243,33 @@ public sealed class RoiCalibrationPage : UserControl
     private void SaveRoi(RoiDefinition roi)
     {
         if (_session is null) return;
+        ClampRoiToReference(roi);
         _session.Repository.SaveRoi(roi);
         _session.WriteProductConfig();
         ReloadRois(roi.Id);
     }
 
+    private void ApplyGridEdit(int rowIndex)
+    {
+        if (_session is null || rowIndex < 0 || rowIndex >= _grid.Rows.Count) return;
+        var id = _grid.Rows[rowIndex].Cells["Id"].Value?.ToString();
+        var roi = _rois.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (roi is null) return;
+
+        var row = _grid.Rows[rowIndex];
+        roi.X = ParseInt(row.Cells["X"].Value, roi.X);
+        roi.Y = ParseInt(row.Cells["Y"].Value, roi.Y);
+        roi.Width = Math.Max(1, ParseInt(row.Cells["W"].Value, roi.Width));
+        roi.Height = Math.Max(1, ParseInt(row.Cells["H"].Value, roi.Height));
+        roi.Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? true);
+        ClampRoiToReference(roi);
+        SaveRoi(roi);
+    }
+
     private void DuplicateSelected()
     {
         if (_session is null || _grid.SelectedRows.Count == 0) return;
-        var id = _grid.SelectedRows[0].Cells[0].Value?.ToString();
+        var id = _grid.SelectedRows[0].Cells["Id"].Value?.ToString();
         var source = _rois.FirstOrDefault(x => x.Id == id);
         if (source is null) return;
         var copy = new RoiDefinition
@@ -265,6 +284,7 @@ public sealed class RoiCalibrationPage : UserControl
             ExpectedCount = source.ExpectedCount,
             Enabled = source.Enabled
         };
+        ClampRoiToReference(copy);
         _session.Repository.SaveRoi(copy);
         _session.WriteProductConfig();
         ReloadRois(copy.Id);
@@ -273,7 +293,7 @@ public sealed class RoiCalibrationPage : UserControl
     private void DeleteSelected()
     {
         if (_session is null || _grid.SelectedRows.Count == 0) return;
-        var id = _grid.SelectedRows[0].Cells[0].Value?.ToString();
+        var id = _grid.SelectedRows[0].Cells["Id"].Value?.ToString();
         if (string.IsNullOrWhiteSpace(id)) return;
         if (MessageBox.Show(this, $"删除 ROI {id}？", "确认", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
@@ -300,7 +320,7 @@ public sealed class RoiCalibrationPage : UserControl
         _grid.Rows.Clear();
         foreach (var roi in _rois)
         {
-            var row = _grid.Rows.Add(roi.Id, roi.Kind, roi.Expected, roi.X, roi.Y, roi.Width, roi.Height, roi.Enabled ? "✓" : "");
+            var row = _grid.Rows.Add(roi.Id, roi.Kind, roi.Expected, roi.X, roi.Y, roi.Width, roi.Height, roi.Enabled);
             if (roi.Id == selectId) _grid.Rows[row].Selected = true;
         }
         if (!string.IsNullOrWhiteSpace(selectId)) _canvas.SelectRoi(selectId);
@@ -311,13 +331,23 @@ public sealed class RoiCalibrationPage : UserControl
         if (string.IsNullOrWhiteSpace(id)) return;
         foreach (DataGridViewRow row in _grid.Rows)
         {
-            if (string.Equals(row.Cells[0].Value?.ToString(), id, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(row.Cells["Id"].Value?.ToString(), id, StringComparison.OrdinalIgnoreCase))
             {
                 row.Selected = true;
-                _grid.CurrentCell = row.Cells[0];
+                _grid.CurrentCell = row.Cells["Id"];
                 return;
             }
         }
+    }
+
+    private void ClampRoiToReference(RoiDefinition roi)
+    {
+        var size = _canvas.ImageSize;
+        if (size.Width <= 0 || size.Height <= 0) return;
+        roi.Width = Math.Clamp(roi.Width, 1, size.Width);
+        roi.Height = Math.Clamp(roi.Height, 1, size.Height);
+        roi.X = Math.Clamp(roi.X, 0, Math.Max(0, size.Width - roi.Width));
+        roi.Y = Math.Clamp(roi.Y, 0, Math.Max(0, size.Height - roi.Height));
     }
 
     private string NextId(RoiKind kind)
@@ -335,4 +365,7 @@ public sealed class RoiCalibrationPage : UserControl
             .Select(text => int.TryParse(text, out var number) ? number : 0);
         return $"{prefix}{numbers.DefaultIfEmpty(0).Max() + 1:00}";
     }
+
+    private static int ParseInt(object? value, int fallback) =>
+        int.TryParse(Convert.ToString(value), out var parsed) ? parsed : fallback;
 }

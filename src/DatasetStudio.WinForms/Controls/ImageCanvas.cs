@@ -27,6 +27,9 @@ public sealed class ImageCanvas : Control
     private bool _moving;
     private PointF _moveStart;
     private Point _roiStart;
+    private bool _resizing;
+    private int _resizeHandle = -1;
+    private Rectangle _resizeStart;
     private readonly List<RoiDefinition> _rois = new();
 
     public bool AllowRoiEditing { get; set; }
@@ -169,6 +172,18 @@ public sealed class ImageCanvas : Control
             return;
         }
 
+        if (SelectedRoi is not null)
+        {
+            var handle = HitTestHandle(e.Location, SelectedRoi);
+            if (handle >= 0)
+            {
+                _resizing = true;
+                _resizeHandle = handle;
+                _resizeStart = new Rectangle(SelectedRoi.X, SelectedRoi.Y, SelectedRoi.Width, SelectedRoi.Height);
+                return;
+            }
+        }
+
         var hit = HitTest(e.Location);
         SelectedRoi = hit;
         SelectionChanged?.Invoke(this, new RoiSelectionEventArgs(hit));
@@ -200,6 +215,13 @@ public sealed class ImageCanvas : Control
             return;
         }
 
+        if (_resizing && SelectedRoi is not null)
+        {
+            ResizeSelected(ClampToImage(ScreenToImage(e.Location)));
+            Invalidate();
+            return;
+        }
+
         if (_moving && SelectedRoi is not null)
         {
             var current = ScreenToImage(e.Location);
@@ -209,6 +231,17 @@ public sealed class ImageCanvas : Control
             SelectedRoi.Y = Math.Max(0, _roiStart.Y + dy);
             ClampRoi(SelectedRoi);
             Invalidate();
+            return;
+        }
+
+        if (AllowRoiEditing && SelectedRoi is not null)
+        {
+            Cursor = HitTestHandle(e.Location, SelectedRoi) switch
+            {
+                0 or 3 => Cursors.SizeNWSE,
+                1 or 2 => Cursors.SizeNESW,
+                _ => Cursors.Default
+            };
         }
     }
 
@@ -244,6 +277,14 @@ public sealed class ImageCanvas : Control
         if (_moving && SelectedRoi is not null)
         {
             _moving = false;
+            RoiChanged?.Invoke(this, new RoiEventArgs(SelectedRoi));
+        }
+
+        if (_resizing && SelectedRoi is not null)
+        {
+            _resizing = false;
+            _resizeHandle = -1;
+            Cursor = Cursors.Default;
             RoiChanged?.Invoke(this, new RoiEventArgs(SelectedRoi));
         }
     }
@@ -300,6 +341,19 @@ public sealed class ImageCanvas : Control
         graphics.FillRectangle(brush, labelRect);
         using var textBrush = new SolidBrush(color);
         graphics.DrawString(roi.Id, Font, textBrush, labelRect.Left + 4, labelRect.Top + 1);
+
+        if (selected && AllowRoiEditing)
+            DrawResizeHandles(graphics, rect);
+    }
+
+    private static void DrawResizeHandles(Graphics graphics, Rectangle rect)
+    {
+        foreach (var point in GetHandlePoints(rect))
+        {
+            var handle = new Rectangle(point.X - 5, point.Y - 5, 10, 10);
+            graphics.FillRectangle(Brushes.White, handle);
+            graphics.DrawRectangle(Pens.Black, handle);
+        }
     }
 
     private RoiDefinition? HitTest(Point screen)
@@ -311,6 +365,59 @@ public sealed class ImageCanvas : Control
                 return roi;
         }
         return null;
+    }
+
+    private int HitTestHandle(Point screen, RoiDefinition roi)
+    {
+        var rect = Rectangle.Round(ToScreen(new RectangleF(roi.X, roi.Y, roi.Width, roi.Height)));
+        var points = GetHandlePoints(rect);
+        for (var i = 0; i < points.Length; i++)
+        {
+            if (Math.Abs(screen.X - points[i].X) <= 8 && Math.Abs(screen.Y - points[i].Y) <= 8)
+                return i;
+        }
+        return -1;
+    }
+
+    private void ResizeSelected(PointF imagePoint)
+    {
+        if (SelectedRoi is null || _image is null) return;
+        const int minSize = 4;
+        var left = _resizeStart.Left;
+        var top = _resizeStart.Top;
+        var right = _resizeStart.Right;
+        var bottom = _resizeStart.Bottom;
+        var x = (int)Math.Round(imagePoint.X);
+        var y = (int)Math.Round(imagePoint.Y);
+
+        switch (_resizeHandle)
+        {
+            case 0:
+                left = Math.Min(x, right - minSize);
+                top = Math.Min(y, bottom - minSize);
+                break;
+            case 1:
+                right = Math.Max(x, left + minSize);
+                top = Math.Min(y, bottom - minSize);
+                break;
+            case 2:
+                left = Math.Min(x, right - minSize);
+                bottom = Math.Max(y, top + minSize);
+                break;
+            case 3:
+                right = Math.Max(x, left + minSize);
+                bottom = Math.Max(y, top + minSize);
+                break;
+        }
+
+        left = Math.Clamp(left, 0, _image.Width - 1);
+        top = Math.Clamp(top, 0, _image.Height - 1);
+        right = Math.Clamp(right, left + 1, _image.Width);
+        bottom = Math.Clamp(bottom, top + 1, _image.Height);
+        SelectedRoi.X = left;
+        SelectedRoi.Y = top;
+        SelectedRoi.Width = right - left;
+        SelectedRoi.Height = bottom - top;
     }
 
     private PointF ScreenToImage(Point point) => new(
@@ -332,9 +439,19 @@ public sealed class ImageCanvas : Control
     private void ClampRoi(RoiDefinition roi)
     {
         if (_image is null) return;
+        roi.Width = Math.Clamp(roi.Width, 1, _image.Width);
+        roi.Height = Math.Clamp(roi.Height, 1, _image.Height);
         roi.X = Math.Clamp(roi.X, 0, Math.Max(0, _image.Width - roi.Width));
         roi.Y = Math.Clamp(roi.Y, 0, Math.Max(0, _image.Height - roi.Height));
     }
+
+    private static Point[] GetHandlePoints(Rectangle rect) =>
+    [
+        new Point(rect.Left, rect.Top),
+        new Point(rect.Right, rect.Top),
+        new Point(rect.Left, rect.Bottom),
+        new Point(rect.Right, rect.Bottom)
+    ];
 
     private static RectangleF Normalize(PointF a, PointF b) => new(
         Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));

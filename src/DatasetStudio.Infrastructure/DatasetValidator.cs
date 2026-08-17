@@ -4,7 +4,10 @@ namespace DatasetStudio.Infrastructure;
 
 public sealed class DatasetValidator
 {
-    public IReadOnlyList<ValidationItem> Validate(CatalogRepository repository)
+    public IReadOnlyList<ValidationItem> Validate(
+        CatalogRepository repository,
+        int referenceWidth = 0,
+        int referenceHeight = 0)
     {
         var images = repository.LoadImages();
         var rois = repository.LoadRois();
@@ -15,6 +18,8 @@ public sealed class DatasetValidator
         var testNg = images.Count(x => x.Split == DatasetSplit.Test && x.Truth == ImageTruth.Ng);
         var unclassified = images.Count(x => !x.IsClassified);
         var ngWithoutRoi = images.Count(x => x.Truth == ImageTruth.Ng && x.GetDefectRoiIds().Count == 0);
+        var missingSource = images.Count(x => !File.Exists(x.SourcePath));
+
         var roiIds = rois.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unknownRoi = images
             .Where(x => x.Truth == ImageTruth.Ng)
@@ -25,10 +30,16 @@ public sealed class DatasetValidator
         var trainTestLeak = duplicateHashes.Count(group =>
             group.Any(x => x.Split == DatasetSplit.Train) &&
             group.Any(x => x.Split == DatasetSplit.Test));
+        var duplicateRoiIds = rois.Count - roiIds.Count;
+        var outOfBounds = referenceWidth > 0 && referenceHeight > 0
+            ? rois.Count(r =>
+                r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 ||
+                r.X + r.Width > referenceWidth || r.Y + r.Height > referenceHeight)
+            : 0;
 
-        items.Add(CheckCount("训练 GOOD", trainGood, true));
-        items.Add(CheckCount("测试 GOOD", testGood, true));
-        items.Add(CheckCount("测试 NG", testNg, true));
+        items.Add(CheckCount("训练 GOOD", trainGood));
+        items.Add(CheckCount("测试 GOOD", testGood));
+        items.Add(CheckCount("测试 NG", testNg));
         items.Add(new ValidationItem(
             "Train/Test 重复图片", trainTestLeak,
             trainTestLeak == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
@@ -40,7 +51,7 @@ public sealed class DatasetValidator
         items.Add(new ValidationItem(
             "未分类图片", unclassified,
             unclassified == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
-            unclassified == 0 ? "全部图片已处理" : "仍有图片未分类"));
+            unclassified == 0 ? "全部图片已处理" : "仍有图片未分类；请分类或设置 Ignore"));
         items.Add(new ValidationItem(
             "NG 无 ROI 标签", ngWithoutRoi,
             ngWithoutRoi == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
@@ -50,23 +61,37 @@ public sealed class DatasetValidator
             unknownRoi == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
             unknownRoi == 0 ? "标签中的 ROI 均存在" : "部分图片引用了已删除或不存在的 ROI"));
         items.Add(new ValidationItem(
-            "ROI ID 重复", rois.Count - roiIds.Count,
-            rois.Count == roiIds.Count ? ValidationSeverity.Ok : ValidationSeverity.Error,
-            rois.Count == roiIds.Count ? "ROI ID 唯一" : "ROI ID 存在重复"));
+            "ROI 超出参考图范围", outOfBounds,
+            outOfBounds == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
+            referenceWidth <= 0 || referenceHeight <= 0
+                ? "尚未设置有效参考图尺寸；设置 reference_aligned.png 后会检查 ROI 边界"
+                : outOfBounds == 0 ? "ROI 坐标全部位于标准参考图内" : "部分 ROI 超出 reference_aligned.png 标准坐标范围"));
+        items.Add(new ValidationItem(
+            "ROI ID 重复", duplicateRoiIds,
+            duplicateRoiIds == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
+            duplicateRoiIds == 0 ? "ROI ID 唯一" : "ROI ID 存在重复"));
+        items.Add(new ValidationItem(
+            "源图片不存在", missingSource,
+            missingSource == 0 ? ValidationSeverity.Ok : ValidationSeverity.Error,
+            missingSource == 0 ? "数据库记录对应的源文件均存在" : "部分源图片已被移动或删除，禁止导出"));
 
         return items;
     }
 
-    public bool CanExport(CatalogRepository repository, out IReadOnlyList<ValidationItem> items)
+    public bool CanExport(
+        CatalogRepository repository,
+        out IReadOnlyList<ValidationItem> items,
+        int referenceWidth = 0,
+        int referenceHeight = 0)
     {
-        items = Validate(repository);
+        items = Validate(repository, referenceWidth, referenceHeight);
         return items.All(x => x.Severity != ValidationSeverity.Error);
     }
 
-    private static ValidationItem CheckCount(string name, int value, bool requirePositive) =>
+    private static ValidationItem CheckCount(string name, int value) =>
         new(
             name,
             value,
-            !requirePositive || value > 0 ? ValidationSeverity.Ok : ValidationSeverity.Warning,
+            value > 0 ? ValidationSeverity.Ok : ValidationSeverity.Warning,
             value > 0 ? "数量正常" : "当前数量为 0，建议补充数据");
 }
