@@ -1,4 +1,5 @@
 using DatasetStudio.Core;
+using DatasetStudio.WinForms.Controls;
 
 namespace DatasetStudio.WinForms.Pages;
 
@@ -83,7 +84,7 @@ public sealed partial class RoiCalibrationPage : UserControl
     private void Canvas_RoiCreated(object? sender, RoiEventArgs e) => CreateRoi(e.Roi);
     private void Canvas_RoiChanged(object? sender, RoiEventArgs e) => SaveRoi(e.Roi);
 
-    private void Canvas_SelectionChanged(object? sender, RoiEventArgs e)
+    private void Canvas_SelectionChanged(object? sender, RoiSelectionEventArgs e)
     {
         if (_syncingSelection) return;
         _syncingSelection = true;
