@@ -11,6 +11,7 @@ public sealed class RoiCalibrationPage : UserControl
     private readonly Label _modeLabel = new();
     private AppSession? _session;
     private List<RoiDefinition> _rois = new();
+    private bool _syncingSelection;
 
     public RoiCalibrationPage()
     {
@@ -40,7 +41,13 @@ public sealed class RoiCalibrationPage : UserControl
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430F));
 
         root.Controls.Add(BuildToolPanel(), 0, 0);
-        var viewerPanel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(1), Margin = new Padding(10, 0) };
+        var viewerPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(1),
+            Margin = new Padding(10, 0, 10, 0)
+        };
         viewerPanel.Controls.Add(_canvas);
         root.Controls.Add(viewerPanel, 1, 0);
         root.Controls.Add(BuildGridPanel(), 2, 0);
@@ -163,11 +170,19 @@ public sealed class RoiCalibrationPage : UserControl
     {
         _canvas.RoiCreated += (_, e) => CreateRoi(e.Roi);
         _canvas.RoiChanged += (_, e) => SaveRoi(e.Roi);
-        _canvas.SelectionChanged += (_, e) => SelectGridRow(e.Roi?.Id);
+        _canvas.SelectionChanged += (_, e) =>
+        {
+            if (_syncingSelection) return;
+            _syncingSelection = true;
+            try { SelectGridRow(e.Roi?.Id); }
+            finally { _syncingSelection = false; }
+        };
         _grid.SelectionChanged += (_, _) =>
         {
-            if (_grid.SelectedRows.Count > 0)
-                _canvas.SelectRoi(_grid.SelectedRows[0].Cells[0].Value?.ToString());
+            if (_syncingSelection || _grid.SelectedRows.Count == 0) return;
+            _syncingSelection = true;
+            try { _canvas.SelectRoi(_grid.SelectedRows[0].Cells[0].Value?.ToString()); }
+            finally { _syncingSelection = false; }
         };
     }
 
@@ -315,7 +330,7 @@ public sealed class RoiCalibrationPage : UserControl
             _ => "SURFACE"
         };
         var numbers = _rois
-            .Where(x => x.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.Kind == kind && x.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             .Select(x => x.Id[prefix.Length..])
             .Select(text => int.TryParse(text, out var number) ? number : 0);
         return $"{prefix}{numbers.DefaultIfEmpty(0).Max() + 1:00}";
