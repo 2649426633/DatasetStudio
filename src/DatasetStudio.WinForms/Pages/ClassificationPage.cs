@@ -1,5 +1,6 @@
 using DatasetStudio.Core;
 using DatasetStudio.WinForms.Controls;
+using DatasetStudio.WinForms.Dialogs;
 
 namespace DatasetStudio.WinForms.Pages;
 
@@ -19,6 +20,7 @@ public sealed class ClassificationPage : UserControl
     private readonly Label _stats = new();
     private readonly CheckBox _onlyUnclassified = new() { Text = "仅未分类" };
     private readonly Button _saveNext = UiTheme.CreateButton("保存 + 下一张", true);
+    private readonly Button _categorySettings = UiTheme.CreateButton("类别 / 目录设置");
     private AppSession? _session;
     private List<ImageRecord> _images = new();
     private bool _loading;
@@ -26,6 +28,7 @@ public sealed class ClassificationPage : UserControl
     public ClassificationPage()
     {
         BackColor = UiTheme.WindowBackground;
+        Font = new Font("Microsoft YaHei UI", 10F);
         BuildLayout();
         WireEvents();
     }
@@ -34,6 +37,7 @@ public sealed class ClassificationPage : UserControl
     {
         _session = session;
         session.Repository.ScanSourceDirectory(session.Project.SourceDirectory);
+        RefreshCategoryUi();
         ReloadRois();
         ReloadImages();
     }
@@ -72,11 +76,11 @@ public sealed class ClassificationPage : UserControl
             BackColor = UiTheme.WindowBackground,
             Margin = Padding.Empty
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 285F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 400F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 380F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
 
         root.Controls.Add(BuildImageListPanel(), 0, 0);
         root.Controls.Add(BuildViewerPanel(), 1, 0);
@@ -87,6 +91,7 @@ public sealed class ClassificationPage : UserControl
         _stats.Padding = new Padding(12, 0, 0, 0);
         _stats.BackColor = UiTheme.Surface;
         _stats.ForeColor = UiTheme.TextSecondary;
+        _stats.Font = new Font("Microsoft YaHei UI", 10F);
         root.Controls.Add(_stats, 0, 1);
         root.SetColumnSpan(_stats, 3);
         Controls.Add(root);
@@ -94,16 +99,26 @@ public sealed class ClassificationPage : UserControl
 
     private Control BuildImageListPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(12), Margin = new Padding(0, 0, 10, 0) };
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(12),
+            Margin = new Padding(0, 0, 10, 0)
+        };
         var title = UiTheme.CreateSectionTitle("数据 / 图片列表");
         title.Location = new Point(12, 12);
+
         var rescan = UiTheme.CreateButton("重新扫描");
-        rescan.Size = new Size(88, 30);
+        rescan.Size = new Size(96, 32);
         rescan.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        rescan.Location = new Point(173, 8);
+        rescan.Location = new Point(278, 8);
+        rescan.Font = new Font("Microsoft YaHei UI", 9.5F);
         rescan.Click += (_, _) => Rescan();
+
         _onlyUnclassified.AutoSize = true;
-        _onlyUnclassified.Location = new Point(12, 45);
+        _onlyUnclassified.Location = new Point(12, 48);
+        _onlyUnclassified.Font = new Font("Microsoft YaHei UI", 10F);
         _onlyUnclassified.CheckedChanged += (_, _) => ReloadList();
 
         _imagesList.View = View.Details;
@@ -111,11 +126,18 @@ public sealed class ClassificationPage : UserControl
         _imagesList.HideSelection = false;
         _imagesList.MultiSelect = false;
         _imagesList.BorderStyle = BorderStyle.FixedSingle;
-        _imagesList.Columns.Add("文件", 155);
-        _imagesList.Columns.Add("状态", 96);
-        _imagesList.Location = new Point(12, 72);
-        _imagesList.Size = new Size(249, 500);
+        _imagesList.Font = new Font("Microsoft YaHei UI", 10.5F);
+        _imagesList.Columns.Add("文件", 230);
+        _imagesList.Columns.Add("状态", 136);
+        _imagesList.Location = new Point(12, 78);
+        _imagesList.Size = new Size(366, 500);
         _imagesList.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+
+        panel.Resize += (_, _) =>
+        {
+            rescan.Left = Math.Max(12, panel.ClientSize.Width - rescan.Width - 12);
+            ResizeImageColumns();
+        };
 
         panel.Controls.Add(title);
         panel.Controls.Add(rescan);
@@ -124,9 +146,23 @@ public sealed class ClassificationPage : UserControl
         return panel;
     }
 
+    private void ResizeImageColumns()
+    {
+        if (_imagesList.Columns.Count < 2 || _imagesList.ClientSize.Width <= 0) return;
+        const int statusWidth = 136;
+        _imagesList.Columns[1].Width = statusWidth;
+        _imagesList.Columns[0].Width = Math.Max(190, _imagesList.ClientSize.Width - statusWidth - 6);
+    }
+
     private Control BuildViewerPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(1), Margin = new Padding(0, 0, 10, 0) };
+        var panel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(1),
+            Margin = new Padding(0, 0, 10, 0)
+        };
         _canvas.Dock = DockStyle.Fill;
         _canvas.AllowRoiEditing = false;
         _canvas.ShowRois = true;
@@ -139,56 +175,106 @@ public sealed class ClassificationPage : UserControl
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(16) };
         var title = UiTheme.CreateSectionTitle("当前图片信息");
         title.Location = new Point(16, 16);
-        _fileName.Location = new Point(16, 48);
-        _fileName.Size = new Size(300, 22);
-        _fileName.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
-        _pathLabel.Location = new Point(16, 72);
-        _pathLabel.Size = new Size(300, 42);
-        _pathLabel.ForeColor = UiTheme.TextMuted;
 
-        var category = new Label { Text = "分类", Location = new Point(16, 124), AutoSize = true, ForeColor = UiTheme.TextSecondary };
+        _fileName.Location = new Point(16, 48);
+        _fileName.Size = new Size(338, 24);
+        _fileName.Font = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold);
+        _fileName.AutoEllipsis = true;
+
+        _pathLabel.Location = new Point(16, 76);
+        _pathLabel.Size = new Size(338, 42);
+        _pathLabel.ForeColor = UiTheme.TextMuted;
+        _pathLabel.Font = new Font("Microsoft YaHei UI", 9.5F);
+        _pathLabel.AutoEllipsis = true;
+
+        var category = new Label
+        {
+            Text = "分类",
+            Location = new Point(16, 128),
+            AutoSize = true,
+            ForeColor = UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold)
+        };
+
+        _categorySettings.Location = new Point(210, 120);
+        _categorySettings.Size = new Size(144, 32);
+        _categorySettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _categorySettings.Font = new Font("Microsoft YaHei UI", 9.5F);
+        _categorySettings.Click += (_, _) => EditCategorySettings();
+
         var radios = new[] { _trainGood, _testGood, _testNg, _ignore };
         for (var i = 0; i < radios.Length; i++)
         {
-            radios[i].Location = new Point(20, 150 + i * 30);
+            radios[i].Location = new Point(20, 160 + i * 32);
             radios[i].AutoSize = true;
-            radios[i].Font = new Font("Microsoft YaHei UI", 9.5F);
+            radios[i].MaximumSize = new Size(330, 0);
+            radios[i].Font = new Font("Microsoft YaHei UI", 10.5F);
         }
 
-        var roiTitle = new Label { Text = "NG 异常 ROI", Location = new Point(16, 280), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        _roiList.Location = new Point(16, 305);
-        _roiList.Size = new Size(300, 120);
+        var roiTitle = new Label
+        {
+            Text = "NG 异常 ROI",
+            Location = new Point(16, 296),
+            AutoSize = true,
+            ForeColor = UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F)
+        };
+        _roiList.Location = new Point(16, 322);
+        _roiList.Size = new Size(338, 120);
         _roiList.CheckOnClick = true;
         _roiList.BorderStyle = BorderStyle.FixedSingle;
+        _roiList.Font = new Font("Microsoft YaHei UI", 10F);
 
-        var defectTitle = new Label { Text = "缺陷类型", Location = new Point(16, 438), AutoSize = true, ForeColor = UiTheme.TextSecondary };
+        var defectTitle = new Label
+        {
+            Text = "缺陷类型",
+            Location = new Point(16, 454),
+            AutoSize = true,
+            ForeColor = UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F)
+        };
         _defectType.DropDownStyle = ComboBoxStyle.DropDownList;
-        _defectType.Location = new Point(16, 463);
-        _defectType.Size = new Size(300, 30);
-        _defectType.Items.AddRange(Enum.GetNames<DefectType>().Where(x => x != nameof(DefectType.None)).Cast<object>().ToArray());
+        _defectType.Location = new Point(16, 480);
+        _defectType.Size = new Size(338, 32);
+        _defectType.Font = new Font("Microsoft YaHei UI", 10.5F);
+        _defectType.Items.AddRange(Enum.GetNames<DefectType>()
+            .Where(x => x != nameof(DefectType.None))
+            .Cast<object>()
+            .ToArray());
         if (_defectType.Items.Count > 0) _defectType.SelectedIndex = 0;
 
-        var noteTitle = new Label { Text = "备注", Location = new Point(16, 506), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        _note.Location = new Point(16, 530);
-        _note.Size = new Size(300, 66);
+        var noteTitle = new Label
+        {
+            Text = "备注",
+            Location = new Point(16, 524),
+            AutoSize = true,
+            ForeColor = UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F)
+        };
+        _note.Location = new Point(16, 550);
+        _note.Size = new Size(338, 70);
+        _note.Font = new Font("Microsoft YaHei UI", 10F);
         _note.Multiline = true;
         _note.ScrollBars = ScrollBars.Vertical;
-        _saveNext.Location = new Point(16, 612);
-        _saveNext.Size = new Size(300, 38);
+
+        _saveNext.Location = new Point(16, 636);
+        _saveNext.Size = new Size(338, 40);
         _saveNext.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+        _saveNext.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
 
         var help = new Label
         {
             Text = "快捷键：T/G/N/I 分类 · 1-9 ROI · Enter 保存 · Space 下一张未分类 · ←/→ 切换",
-            Location = new Point(16, 660),
-            Size = new Size(300, 58),
+            Location = new Point(16, 686),
+            Size = new Size(338, 58),
             ForeColor = UiTheme.TextMuted,
+            Font = new Font("Microsoft YaHei UI", 9.5F),
             Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
         };
 
         panel.Controls.AddRange(new Control[]
         {
-            title, _fileName, _pathLabel, category,
+            title, _fileName, _pathLabel, category, _categorySettings,
             _trainGood, _testGood, _testNg, _ignore,
             roiTitle, _roiList, defectTitle, _defectType,
             noteTitle, _note, _saveNext, help
@@ -205,6 +291,38 @@ public sealed class ClassificationPage : UserControl
         _testGood.CheckedChanged += (_, _) => UpdateNgControls();
         _ignore.CheckedChanged += (_, _) => UpdateNgControls();
     }
+
+    private void EditCategorySettings()
+    {
+        if (_session is null) return;
+        using var dialog = new CategorySettingsDialog(GetCategories());
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        _session.Project.Categories = dialog.Result;
+        _session.SaveProject();
+        RefreshCategoryUi();
+        ReloadList();
+        UpdateStats();
+    }
+
+    private DatasetCategoryOptions GetCategories()
+    {
+        if (_session is null) return new DatasetCategoryOptions();
+        _session.Project.Categories ??= new DatasetCategoryOptions();
+        return _session.Project.Categories;
+    }
+
+    private void RefreshCategoryUi()
+    {
+        var categories = GetCategories();
+        _trainGood.Text = categories.TrainGoodLabel;
+        _testGood.Text = categories.TestGoodLabel;
+        _testNg.Text = categories.TestNgLabel;
+        _ignore.Text = categories.IgnoreLabel;
+    }
+
+    private string GetStatusText(ImageRecord image) =>
+        GetCategories().GetLabel(image.Split, image.Truth);
 
     private void Rescan()
     {
@@ -236,11 +354,12 @@ public sealed class ClassificationPage : UserControl
         foreach (var image in _images.Where(x => !_onlyUnclassified.Checked || !x.IsClassified))
         {
             var item = new ListViewItem(image.FileName) { Tag = image };
-            item.SubItems.Add(image.StatusText);
+            item.SubItems.Add(GetStatusText(image));
             _imagesList.Items.Add(item);
             if (selectId.HasValue && image.Id == selectId.Value) item.Selected = true;
         }
         _imagesList.EndUpdate();
+        ResizeImageColumns();
         if (_imagesList.SelectedItems.Count == 0 && _imagesList.Items.Count > 0)
             _imagesList.Items[0].Selected = true;
     }
@@ -276,7 +395,9 @@ public sealed class ClassificationPage : UserControl
             _testNg.Checked = image.Split == DatasetSplit.Test && image.Truth == ImageTruth.Ng;
             _ignore.Checked = image.Split == DatasetSplit.Ignore || image.Truth == ImageTruth.Ignore;
             for (var i = 0; i < _roiList.Items.Count; i++)
-                _roiList.SetItemChecked(i, image.GetDefectRoiIds().Contains(_roiList.Items[i]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase));
+                _roiList.SetItemChecked(i, image.GetDefectRoiIds().Contains(
+                    _roiList.Items[i]?.ToString() ?? string.Empty,
+                    StringComparer.OrdinalIgnoreCase));
             if (image.DefectType != DefectType.None)
                 _defectType.SelectedItem = image.DefectType.ToString();
             _note.Text = image.Note;
@@ -298,24 +419,45 @@ public sealed class ClassificationPage : UserControl
         DefectType defectType = DefectType.None;
         var rois = Array.Empty<string>();
 
-        if (_trainGood.Checked) { split = DatasetSplit.Train; truth = ImageTruth.Good; }
-        else if (_testGood.Checked) { split = DatasetSplit.Test; truth = ImageTruth.Good; }
+        if (_trainGood.Checked)
+        {
+            split = DatasetSplit.Train;
+            truth = ImageTruth.Good;
+        }
+        else if (_testGood.Checked)
+        {
+            split = DatasetSplit.Test;
+            truth = ImageTruth.Good;
+        }
         else if (_testNg.Checked)
         {
             split = DatasetSplit.Test;
             truth = ImageTruth.Ng;
-            rois = _roiList.CheckedItems.Cast<object>().Select(x => x.ToString()!).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+            rois = _roiList.CheckedItems.Cast<object>()
+                .Select(x => x.ToString()!)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToArray();
             if (rois.Length == 0)
             {
-                MessageBox.Show(this, "Test NG 必须至少选择一个异常 ROI。", "标签不完整", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, $"{_testNg.Text} 必须至少选择一个异常 ROI。", "标签不完整", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            defectType = Enum.TryParse<DefectType>(_defectType.SelectedItem?.ToString(), out var parsed) ? parsed : DefectType.Other;
+            defectType = Enum.TryParse<DefectType>(_defectType.SelectedItem?.ToString(), out var parsed)
+                ? parsed
+                : DefectType.Other;
         }
-        else if (_ignore.Checked) { split = DatasetSplit.Ignore; truth = ImageTruth.Ignore; }
+        else if (_ignore.Checked)
+        {
+            split = DatasetSplit.Ignore;
+            truth = ImageTruth.Ignore;
+        }
         else
         {
-            MessageBox.Show(this, "请先选择 Train GOOD / Test GOOD / Test NG / Ignore。", "未选择分类", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this,
+                $"请先选择 {_trainGood.Text} / {_testGood.Text} / {_testNg.Text} / {_ignore.Text}。",
+                "未选择分类",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
             return;
         }
 
@@ -376,8 +518,14 @@ public sealed class ClassificationPage : UserControl
 
     private void UpdateStats()
     {
-        if (_session is null) { _stats.Text = "尚未打开项目"; return; }
+        if (_session is null)
+        {
+            _stats.Text = "尚未打开项目";
+            return;
+        }
+
         var c = _session.Repository.GetCounts();
-        _stats.Text = $"已分类 {c.Classified}/{c.Total}   |   Train GOOD {c.TrainGood}   |   Test GOOD {c.TestGood}   |   NG {c.TestNg}   |   Ignore {c.Ignored}   |   未分类 {c.Unclassified}";
+        var categories = GetCategories();
+        _stats.Text = $"已分类 {c.Classified}/{c.Total}   |   {categories.TrainGoodLabel} {c.TrainGood}   |   {categories.TestGoodLabel} {c.TestGood}   |   {categories.TestNgLabel} {c.TestNg}   |   {categories.IgnoreLabel} {c.Ignored}   |   未分类 {c.Unclassified}";
     }
 }
