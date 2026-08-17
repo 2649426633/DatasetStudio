@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DatasetStudio.WinForms</RootNamespace>
+    <AssemblyName>DatasetStudio</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DatasetStudio.Core\DatasetStudio.Core.csproj" />
+    <ProjectReference Include="..\DatasetStudio.Infrastructure\DatasetStudio.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

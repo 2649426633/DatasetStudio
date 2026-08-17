@@ -1,0 +1,143 @@
+using System.Drawing.Imaging;
+using System.Text.Json;
+using DatasetStudio.Core;
+using DatasetStudio.Infrastructure;
+
+namespace DatasetStudio.WinForms;
+
+public sealed class AppSession
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public string ProjectDirectory { get; }
+    public DatasetProject Project { get; private set; }
+    public CatalogRepository Repository { get; }
+
+    public string ProjectFilePath => Path.Combine(ProjectDirectory, "project.json");
+    public string ReferenceImagePath => Resolve(Project.ReferenceImage);
+    public string ProductConfigPath => Resolve(Project.ProductConfig);
+
+    private AppSession(string projectDirectory, DatasetProject project)
+    {
+        ProjectDirectory = Path.GetFullPath(projectDirectory);
+        Project = project;
+        Repository = new CatalogRepository(ProjectDirectory);
+        Repository.Initialize();
+    }
+
+    public static AppSession Create(string projectDirectory, string sourceDirectory)
+    {
+        Directory.CreateDirectory(projectDirectory);
+        var name = new DirectoryInfo(projectDirectory).Name;
+        if (string.IsNullOrWhiteSpace(name)) name = new DirectoryInfo(sourceDirectory).Name;
+        var safeName = string.Concat(name.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
+        var project = new DatasetProject
+        {
+            Name = name,
+            SourceDirectory = Path.GetFullPath(sourceDirectory),
+            ReferenceImage = "reference\\reference_aligned.png",
+            ProductConfig = $"configs\\{safeName.ToLowerInvariant()}.json"
+        };
+        var session = new AppSession(projectDirectory, project);
+        session.SaveProject();
+        session.Repository.ScanSourceDirectory(project.SourceDirectory);
+        session.WriteProductConfig();
+        return session;
+    }
+
+    public static AppSession Open(string projectDirectory)
+    {
+        var projectFile = Path.Combine(projectDirectory, "project.json");
+        if (!File.Exists(projectFile))
+            throw new FileNotFoundException("所选目录中没有 project.json。", projectFile);
+
+        var json = File.ReadAllText(projectFile);
+        var project = JsonSerializer.Deserialize<DatasetProject>(json, JsonOptions)
+            ?? throw new InvalidDataException("project.json 内容无效。");
+        return new AppSession(projectDirectory, project);
+    }
+
+    public void SaveProject()
+    {
+        Directory.CreateDirectory(ProjectDirectory);
+        File.WriteAllText(ProjectFilePath, JsonSerializer.Serialize(Project, JsonOptions));
+    }
+
+    public void ImportReferenceImage(string sourceFile)
+    {
+        var directory = Path.Combine(ProjectDirectory, "reference");
+        Directory.CreateDirectory(directory);
+        var target = Path.Combine(directory, "reference_aligned.png");
+        using var image = Image.FromFile(sourceFile);
+        image.Save(target, ImageFormat.Png);
+        Project.ReferenceImage = "reference\\reference_aligned.png";
+        SaveProject();
+        WriteProductConfig();
+    }
+
+    public void WriteProductConfig()
+    {
+        var rois = Repository.LoadRois();
+        var width = 0;
+        var height = 0;
+        if (File.Exists(ReferenceImagePath))
+        {
+            using var image = Image.FromFile(ReferenceImagePath);
+            width = image.Width;
+            height = image.Height;
+        }
+
+        var screwSlots = rois
+            .Where(x => x.Kind is RoiKind.ScrewSlot or RoiKind.EmptySlot)
+            .Select(x => new
+            {
+                id = x.Id,
+                roi = new[] { x.X, x.Y, x.Width, x.Height },
+                expected = x.Expected,
+                enabled = x.Enabled
+            });
+        var springRegions = rois
+            .Where(x => x.Kind == RoiKind.SpringRegion)
+            .Select(x => new
+            {
+                id = x.Id,
+                roi = new[] { x.X, x.Y, x.Width, x.Height },
+                expected_count = x.ExpectedCount ?? 0,
+                enabled = x.Enabled
+            });
+        var anomalyRegions = rois
+            .Where(x => x.Kind == RoiKind.AnomalyRegion)
+            .Select(x => new
+            {
+                id = x.Id,
+                roi = new[] { x.X, x.Y, x.Width, x.Height },
+                enabled = x.Enabled
+            });
+
+        var config = new
+        {
+            schema_version = 1,
+            product = Project.Name,
+            coordinate_system = new
+            {
+                reference_image = "artifacts/reference/reference_aligned.png",
+                image_width = width,
+                image_height = height
+            },
+            screw_slots = screwSlots,
+            spring_regions = springRegions,
+            anomaly_regions = anomalyRegions
+        };
+
+        Directory.CreateDirectory(Path.GetDirectoryName(ProductConfigPath)!);
+        File.WriteAllText(ProductConfigPath, JsonSerializer.Serialize(config, JsonOptions));
+    }
+
+    private string Resolve(string path) => Path.IsPathRooted(path)
+        ? path
+        : Path.GetFullPath(Path.Combine(ProjectDirectory, path));
+}
