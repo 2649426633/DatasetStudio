@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="MainForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Update="MainForm.Designer.cs"><DependentUpon>MainForm.cs</DependentUpon></Compile>
+    <EmbeddedResource Update="MainForm.resx"><DependentUpon>MainForm.cs</DependentUpon></EmbeddedResource>
+
     <Compile Update="Pages\ClassificationPage.cs"><SubType>UserControl</SubType></Compile>
     <Compile Update="Pages\ClassificationPage.Designer.cs"><DependentUpon>ClassificationPage.cs</DependentUpon></Compile>
     <EmbeddedResource Update="Pages\ClassificationPage.resx"><DependentUpon>ClassificationPage.cs</DependentUpon></EmbeddedResource>
