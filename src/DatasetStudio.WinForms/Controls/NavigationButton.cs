@@ -1,7 +1,7 @@
 namespace DatasetStudio.WinForms;
 
 /// <summary>Header navigation button with the reference design's active underline.</summary>
-internal sealed class NavigationButton : Button
+public sealed class NavigationButton : Button
 {
     private bool _active;
 
