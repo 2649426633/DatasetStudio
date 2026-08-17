@@ -38,9 +38,18 @@ public sealed class DatasetExporter
 
         try
         {
-            var trainGoodDir = Path.Combine(staging, "dataset_roi_dino", "train", "good");
-            var testGoodDir = Path.Combine(staging, "dataset_roi_dino", "test", "good");
-            var testNgDir = Path.Combine(staging, "dataset_roi_dino", "test", "ng");
+            var categories = project.Categories ?? new DatasetCategoryOptions();
+            var datasetRoot = Path.Combine(staging, "dataset_roi_dino");
+            var trainGoodDir = ResolveCategoryDirectory(datasetRoot, categories.TrainGoodDirectory, categories.TrainGoodLabel);
+            var testGoodDir = ResolveCategoryDirectory(datasetRoot, categories.TestGoodDirectory, categories.TestGoodLabel);
+            var testNgDir = ResolveCategoryDirectory(datasetRoot, categories.TestNgDirectory, categories.TestNgLabel);
+
+            var distinctDirectories = new[] { trainGoodDir, testGoodDir, testNgDir }
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            if (distinctDirectories != 3)
+                throw new InvalidOperationException("Train GOOD / Test GOOD / Test NG 的导出目录不能相同。");
+
             Directory.CreateDirectory(trainGoodDir);
             Directory.CreateDirectory(testGoodDir);
             Directory.CreateDirectory(testNgDir);
@@ -116,6 +125,12 @@ public sealed class DatasetExporter
                 train_good = trainGood,
                 test_good = testGood,
                 test_ng = testNg,
+                category_directories = new
+                {
+                    train_good = NormalizeForReport(categories.TrainGoodDirectory),
+                    test_good = NormalizeForReport(categories.TestGoodDirectory),
+                    test_ng = NormalizeForReport(categories.TestNgDirectory)
+                },
                 source_files_are_read_only = true,
                 source_target_sha256_verified = true
             };
@@ -141,6 +156,33 @@ public sealed class DatasetExporter
             throw;
         }
     }
+
+    private static string ResolveCategoryDirectory(string datasetRoot, string relativeDirectory, string label)
+    {
+        if (string.IsNullOrWhiteSpace(relativeDirectory))
+            throw new InvalidOperationException($"类别“{label}”的导出目录不能为空。");
+
+        var segments = relativeDirectory
+            .Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0)
+            throw new InvalidOperationException($"类别“{label}”的导出目录不能为空。");
+
+        foreach (var segment in segments)
+        {
+            if (segment is "." or ".." || segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                throw new InvalidOperationException($"类别“{label}”的目录包含无效路径段：{segment}");
+        }
+
+        var path = datasetRoot;
+        foreach (var segment in segments)
+            path = Path.Combine(path, segment);
+        return path;
+    }
+
+    private static string NormalizeForReport(string path) =>
+        string.Join("/", path.Replace('/', '\\')
+            .Split('\\', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     private static (int Width, int Height) ReadReferenceSize(string configPath)
     {
