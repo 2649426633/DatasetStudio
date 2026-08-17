@@ -72,11 +72,11 @@ public sealed class ClassificationPage : UserControl
             BackColor = UiTheme.WindowBackground,
             Margin = Padding.Empty
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 285F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 340F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 360F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
 
         root.Controls.Add(BuildImageListPanel(), 0, 0);
         root.Controls.Add(BuildViewerPanel(), 1, 0);
@@ -94,33 +94,55 @@ public sealed class ClassificationPage : UserControl
 
     private Control BuildImageListPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(12), Margin = new Padding(0, 0, 10, 0) };
+        var panel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = UiTheme.Surface,
+            Padding = new Padding(12),
+            Margin = new Padding(0, 0, 10, 0)
+        };
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
         var title = UiTheme.CreateSectionTitle("数据 / 图片列表");
-        title.Location = new Point(12, 12);
+        title.Dock = DockStyle.Fill;
+        title.TextAlign = ContentAlignment.MiddleLeft;
         var rescan = UiTheme.CreateButton("重新扫描");
         rescan.Size = new Size(88, 30);
-        rescan.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        rescan.Location = new Point(173, 8);
+        rescan.Margin = new Padding(8, 0, 0, 0);
         rescan.Click += (_, _) => Rescan();
+        header.Controls.Add(title, 0, 0);
+        header.Controls.Add(rescan, 1, 0);
+
         _onlyUnclassified.AutoSize = true;
-        _onlyUnclassified.Location = new Point(12, 45);
+        _onlyUnclassified.Dock = DockStyle.Fill;
+        _onlyUnclassified.TextAlign = ContentAlignment.MiddleLeft;
         _onlyUnclassified.CheckedChanged += (_, _) => ReloadList();
 
         _imagesList.View = View.Details;
-        _imagesList.FullRowSelect = true;
-        _imagesList.HideSelection = false;
-        _imagesList.MultiSelect = false;
-        _imagesList.BorderStyle = BorderStyle.FixedSingle;
-        _imagesList.Columns.Add("文件", 155);
-        _imagesList.Columns.Add("状态", 96);
-        _imagesList.Location = new Point(12, 72);
-        _imagesList.Size = new Size(249, 500);
-        _imagesList.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        UiTheme.StyleListView(_imagesList);
+        _imagesList.Columns.Add("文件", 150);
+        _imagesList.Columns.Add("状态", 90);
+        _imagesList.Dock = DockStyle.Fill;
+        _imagesList.Margin = new Padding(0, 6, 0, 0);
 
-        panel.Controls.Add(title);
-        panel.Controls.Add(rescan);
-        panel.Controls.Add(_onlyUnclassified);
-        panel.Controls.Add(_imagesList);
+        panel.Controls.Add(header, 0, 0);
+        panel.Controls.Add(_onlyUnclassified, 0, 1);
+        panel.Controls.Add(_imagesList, 0, 2);
         return panel;
     }
 
@@ -137,62 +159,89 @@ public sealed class ClassificationPage : UserControl
     private Control BuildClassificationPanel()
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(16) };
-        var title = UiTheme.CreateSectionTitle("当前图片信息");
-        title.Location = new Point(16, 16);
-        _fileName.Location = new Point(16, 48);
-        _fileName.Size = new Size(300, 22);
-        _fileName.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);
-        _pathLabel.Location = new Point(16, 72);
-        _pathLabel.Size = new Size(300, 42);
-        _pathLabel.ForeColor = UiTheme.TextMuted;
 
-        var category = new Label { Text = "分类", Location = new Point(16, 124), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        var radios = new[] { _trainGood, _testGood, _testNg, _ignore };
-        for (var i = 0; i < radios.Length; i++)
+        var layout = new TableLayoutPanel
         {
-            radios[i].Location = new Point(20, 150 + i * 30);
-            radios[i].AutoSize = true;
-            radios[i].Font = new Font("Microsoft YaHei UI", 9.5F);
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            AutoScroll = true,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        var title = UiTheme.CreateSectionTitle("当前图片信息");
+        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 8));
+
+        _fileName.AutoSize = false;
+        _fileName.Dock = DockStyle.Fill;
+        _fileName.Font = new Font("Microsoft YaHei UI", 10.5F, FontStyle.Bold);
+        _fileName.ForeColor = UiTheme.TextPrimary;
+        UiTheme.AddRow(layout, _fileName, SizeType.Absolute, 24);
+
+        _pathLabel.AutoSize = false;
+        _pathLabel.Dock = DockStyle.Fill;
+        _pathLabel.ForeColor = UiTheme.TextMuted;
+        UiTheme.AddRow(layout, _pathLabel, SizeType.Absolute, 40, new Padding(0, 0, 0, 8));
+
+        var category = UiTheme.CreateFieldLabel("分类");
+        UiTheme.AddRow(layout, category, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
+
+        foreach (var radio in new[] { _trainGood, _testGood, _testNg, _ignore })
+        {
+            radio.AutoSize = true;
+            radio.Margin = new Padding(4, 0, 0, 0);
+            radio.Font = new Font("Microsoft YaHei UI", 10F);
+            radio.ForeColor = UiTheme.TextPrimary;
+            UiTheme.AddRow(layout, radio, SizeType.AutoSize);
         }
 
-        var roiTitle = new Label { Text = "NG 异常 ROI", Location = new Point(16, 280), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        _roiList.Location = new Point(16, 305);
-        _roiList.Size = new Size(300, 120);
+        var roiTitle = UiTheme.CreateFieldLabel("NG 异常 ROI");
+        UiTheme.AddRow(layout, roiTitle, SizeType.AutoSize, 0, new Padding(0, 10, 0, 4));
+
         _roiList.CheckOnClick = true;
         _roiList.BorderStyle = BorderStyle.FixedSingle;
+        _roiList.BackColor = UiTheme.Surface;
+        _roiList.ForeColor = UiTheme.TextPrimary;
+        _roiList.Font = new Font("Microsoft YaHei UI", 10F);
+        _roiList.Dock = DockStyle.Fill;
+        UiTheme.AddRow(layout, _roiList, SizeType.Absolute, 108, new Padding(0, 0, 0, 8));
 
-        var defectTitle = new Label { Text = "缺陷类型", Location = new Point(16, 438), AutoSize = true, ForeColor = UiTheme.TextSecondary };
+        var defectTitle = UiTheme.CreateFieldLabel("缺陷类型");
+        UiTheme.AddRow(layout, defectTitle, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
+
         _defectType.DropDownStyle = ComboBoxStyle.DropDownList;
-        _defectType.Location = new Point(16, 463);
-        _defectType.Size = new Size(300, 30);
+        _defectType.FlatStyle = FlatStyle.Flat;
+        _defectType.Dock = DockStyle.Fill;
+        _defectType.BackColor = UiTheme.Surface;
+        _defectType.ForeColor = UiTheme.TextPrimary;
+        _defectType.Font = new Font("Microsoft YaHei UI", 10F);
         _defectType.Items.AddRange(Enum.GetNames<DefectType>().Where(x => x != nameof(DefectType.None)).Cast<object>().ToArray());
         if (_defectType.Items.Count > 0) _defectType.SelectedIndex = 0;
+        UiTheme.AddRow(layout, _defectType, SizeType.Absolute, 34, new Padding(0, 0, 0, 8));
 
-        var noteTitle = new Label { Text = "备注", Location = new Point(16, 506), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        _note.Location = new Point(16, 530);
-        _note.Size = new Size(300, 66);
+        var noteTitle = UiTheme.CreateFieldLabel("备注");
+        UiTheme.AddRow(layout, noteTitle, SizeType.AutoSize, 0, new Padding(0, 0, 0, 4));
+
         _note.Multiline = true;
         _note.ScrollBars = ScrollBars.Vertical;
-        _saveNext.Location = new Point(16, 612);
-        _saveNext.Size = new Size(300, 38);
-        _saveNext.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+        _note.BorderStyle = BorderStyle.FixedSingle;
+        _note.BackColor = UiTheme.Surface;
+        _note.ForeColor = UiTheme.TextPrimary;
+        _note.Font = new Font("Microsoft YaHei UI", 10F);
+        _note.Dock = DockStyle.Fill;
+        UiTheme.AddRow(layout, _note, SizeType.Absolute, 72, new Padding(0, 0, 0, 10));
 
-        var help = new Label
-        {
-            Text = "快捷键：T/G/N/I 分类 · 1-9 ROI · Enter 保存 · Space 下一张未分类 · ←/→ 切换",
-            Location = new Point(16, 660),
-            Size = new Size(300, 58),
-            ForeColor = UiTheme.TextMuted,
-            Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
-        };
+        _saveNext.Dock = DockStyle.Fill;
+        _saveNext.Margin = Padding.Empty;
+        UiTheme.AddRow(layout, _saveNext, SizeType.Absolute, 40);
 
-        panel.Controls.AddRange(new Control[]
-        {
-            title, _fileName, _pathLabel, category,
-            _trainGood, _testGood, _testNg, _ignore,
-            roiTitle, _roiList, defectTitle, _defectType,
-            noteTitle, _note, _saveNext, help
-        });
+        var help = UiTheme.CreateMutedText("快捷键：T/G/N/I 分类 · 1-9 ROI · Enter 保存 · Space 下一张未分类 · ←/→ 切换");
+        help.Dock = DockStyle.Fill;
+        help.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, help, SizeType.Absolute, 54, new Padding(0, 10, 0, 0));
+
+        panel.Controls.Add(layout);
         return panel;
     }
 

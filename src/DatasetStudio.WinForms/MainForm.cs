@@ -23,7 +23,7 @@ public sealed class MainForm : Form
         WindowState = FormWindowState.Maximized;
         MinimumSize = new Size(1180, 720);
         BackColor = UiTheme.WindowBackground;
-        Font = new Font("Microsoft YaHei UI", 9F);
+        Font = new Font("Microsoft YaHei UI", 10F);
         KeyPreview = true;
 
         _btnClassification = CreateNavButton("数据集分类", true);
@@ -77,7 +77,7 @@ public sealed class MainForm : Form
             Margin = Padding.Empty,
             BackColor = UiTheme.WindowBackground
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
         var header = new TableLayoutPanel
@@ -88,22 +88,45 @@ public sealed class MainForm : Form
             BackColor = UiTheme.Surface,
             Margin = Padding.Empty
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 230F));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 218F));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 240F));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220F));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 234F));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 224F));
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 1F));
 
-        var brand = new Label
+        // 品牌区：中文名强调色 + 英文名次级色，形成双色标识。
+        var brand = new FlowLayoutPanel
         {
-            Text = "科准  DATASET STUDIO",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(18, 0, 0, 0),
-            ForeColor = UiTheme.TextPrimary,
-            Font = new Font("Microsoft YaHei UI", 11.5F, FontStyle.Bold)
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(20, 0, 0, 0),
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
         };
+        var brandZh = new Label
+        {
+            Text = "科准",
+            AutoSize = false,
+            Size = new Size(46, 64),
+            Margin = Padding.Empty,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = UiTheme.Accent,
+            Font = new Font("Microsoft YaHei UI", 13F, FontStyle.Bold)
+        };
+        var brandEn = new Label
+        {
+            Text = "Dataset Studio",
+            AutoSize = false,
+            Size = new Size(128, 64),
+            Margin = Padding.Empty,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F)
+        };
+        brand.Controls.Add(brandZh);
+        brand.Controls.Add(brandEn);
 
         var navigation = new FlowLayoutPanel
         {
@@ -118,7 +141,7 @@ public sealed class MainForm : Form
         _currentProject.Text = "当前项目：未打开";
         _currentProject.Dock = DockStyle.Fill;
         _currentProject.TextAlign = ContentAlignment.MiddleRight;
-        _currentProject.Padding = new Padding(0, 0, 12, 0);
+        _currentProject.Padding = new Padding(0, 0, 14, 0);
         _currentProject.ForeColor = UiTheme.TextSecondary;
 
         var projectButtons = new FlowLayoutPanel
@@ -126,13 +149,13 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Padding = new Padding(4, 13, 8, 0),
+            Padding = new Padding(4, 14, 12, 0),
             BackColor = UiTheme.Surface
         };
-        var btnNew = UiTheme.CreateButton("新建项目");
-        btnNew.Width = 92;
+        var btnNew = UiTheme.CreateButton("新建项目", true);
+        btnNew.Width = 96;
         var btnOpen = UiTheme.CreateButton("打开项目");
-        btnOpen.Width = 92;
+        btnOpen.Width = 96;
         btnNew.Click += (_, _) => CreateProject();
         btnOpen.Click += (_, _) => OpenProject();
         projectButtons.Controls.Add(btnNew);
@@ -240,9 +263,10 @@ public sealed class MainForm : Form
         foreach (var button in new[] { _btnClassification, _btnRoi, _btnValidation, _btnExport })
         {
             var isActive = button == active;
-            button.BackColor = isActive ? UiTheme.NavigationActive : UiTheme.Surface;
-            button.ForeColor = isActive ? UiTheme.TextPrimary : UiTheme.TextSecondary;
-            button.Font = new Font("Microsoft YaHei UI", 9.5F, isActive ? FontStyle.Bold : FontStyle.Regular);
+            button.BackColor = isActive ? UiTheme.AccentSoft : UiTheme.Surface;
+            button.ForeColor = isActive ? UiTheme.Accent : UiTheme.TextSecondary;
+            button.Font = new Font("Microsoft YaHei UI", 10F, isActive ? FontStyle.Bold : FontStyle.Regular);
+            button.FlatAppearance.MouseOverBackColor = isActive ? UiTheme.AccentSoft : UiTheme.NavigationHover;
         }
     }
 
@@ -262,16 +286,16 @@ public sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Size = new Size(112, 61),
+            Size = new Size(116, 64),
             Margin = Padding.Empty,
             FlatStyle = FlatStyle.Flat,
-            BackColor = active ? UiTheme.NavigationActive : UiTheme.Surface,
-            ForeColor = active ? UiTheme.TextPrimary : UiTheme.TextSecondary,
-            Font = new Font("Microsoft YaHei UI", 9.5F, active ? FontStyle.Bold : FontStyle.Regular),
+            BackColor = active ? UiTheme.AccentSoft : UiTheme.Surface,
+            ForeColor = active ? UiTheme.Accent : UiTheme.TextSecondary,
+            Font = new Font("Microsoft YaHei UI", 10F, active ? FontStyle.Bold : FontStyle.Regular),
             Cursor = Cursors.Hand
         };
         button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.MouseOverBackColor = UiTheme.NavigationHover;
+        button.FlatAppearance.MouseOverBackColor = active ? UiTheme.AccentSoft : UiTheme.NavigationHover;
         button.FlatAppearance.MouseDownBackColor = UiTheme.NavigationPressed;
         return button;
     }

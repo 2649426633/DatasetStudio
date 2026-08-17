@@ -36,9 +36,9 @@ public sealed class RoiCalibrationPage : UserControl
             BackColor = UiTheme.WindowBackground,
             Margin = Padding.Empty
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 460F));
 
         root.Controls.Add(BuildToolPanel(), 0, 0);
         var viewerPanel = new Panel
@@ -57,24 +57,34 @@ public sealed class RoiCalibrationPage : UserControl
     private Control BuildToolPanel()
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(14) };
-        var title = UiTheme.CreateSectionTitle("ROI 工具");
-        title.Location = new Point(14, 14);
-        var reference = UiTheme.CreateButton("选择参考图", true);
-        reference.Location = new Point(14, 48);
-        reference.Size = new Size(148, 34);
-        reference.Click += (_, _) => SelectReferenceImage();
 
-        _referenceLabel.Location = new Point(14, 90);
-        _referenceLabel.Size = new Size(148, 60);
-        _referenceLabel.ForeColor = UiTheme.TextMuted;
-
-        var hint = new Label
+        var layout = new TableLayoutPanel
         {
-            Text = "ROI 只能画在\nreference_aligned.png\n标准坐标系上",
-            Location = new Point(14, 150),
-            Size = new Size(148, 62),
-            ForeColor = UiTheme.TextSecondary
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
         };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        var title = UiTheme.CreateSectionTitle("ROI 工具");
+        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 10));
+
+        var reference = UiTheme.CreateButton("选择参考图", true);
+        reference.Dock = DockStyle.Fill;
+        reference.Click += (_, _) => SelectReferenceImage();
+        UiTheme.AddRow(layout, reference, SizeType.Absolute, 36);
+
+        _referenceLabel.AutoSize = false;
+        _referenceLabel.Dock = DockStyle.Fill;
+        _referenceLabel.ForeColor = UiTheme.TextMuted;
+        _referenceLabel.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, _referenceLabel, SizeType.Absolute, 52, new Padding(0, 4, 0, 4));
+
+        var hint = UiTheme.CreateMutedText("ROI 只能画在\nreference_aligned.png\n标准坐标系上");
+        hint.AutoSize = true;
+        hint.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, hint, SizeType.AutoSize, 0, new Padding(0, 0, 0, 10));
 
         var buttons = new[]
         {
@@ -83,59 +93,60 @@ public sealed class RoiCalibrationPage : UserControl
             ("P  弹簧区域", RoiKind.SpringRegion),
             ("A  通用异常", RoiKind.AnomalyRegion)
         };
-        for (var i = 0; i < buttons.Length; i++)
+        foreach (var (text, kind) in buttons)
         {
-            var button = UiTheme.CreateButton(buttons[i].Item1);
-            button.Location = new Point(14, 230 + i * 44);
-            button.Size = new Size(148, 34);
-            var kind = buttons[i].Item2;
+            var button = UiTheme.CreateButton(text);
+            button.Dock = DockStyle.Fill;
             button.Click += (_, _) => SetCreateMode(kind);
-            panel.Controls.Add(button);
+            UiTheme.AddRow(layout, button, SizeType.Absolute, 38, new Padding(0, 0, 0, 6));
         }
 
         var selectMode = UiTheme.CreateButton("选择 / 移动");
-        selectMode.Location = new Point(14, 416);
-        selectMode.Size = new Size(148, 34);
+        selectMode.Dock = DockStyle.Fill;
         selectMode.Click += (_, _) =>
         {
             _canvas.PendingCreateKind = null;
             _modeLabel.Text = "模式：选择 / 移动";
         };
-        _modeLabel.Location = new Point(14, 462);
-        _modeLabel.Size = new Size(148, 42);
+        UiTheme.AddRow(layout, selectMode, SizeType.Absolute, 38);
+
+        _modeLabel.AutoSize = false;
+        _modeLabel.Dock = DockStyle.Fill;
         _modeLabel.Text = "模式：选择 / 移动";
         _modeLabel.ForeColor = UiTheme.TextSecondary;
+        _modeLabel.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, _modeLabel, SizeType.Absolute, 34, new Padding(0, 4, 0, 10));
 
-        var help = new Label
-        {
-            Text = "滚轮：缩放\n中键/右键：平移\n拖四角：缩放 ROI\n方向键：1px\nShift+方向键：10px",
-            Location = new Point(14, 526),
-            Size = new Size(148, 110),
-            ForeColor = UiTheme.TextMuted
-        };
+        var help = UiTheme.CreateMutedText("滚轮：缩放\n中键/右键：平移\n拖四角：缩放 ROI\n方向键：1px\nShift+方向键：10px");
+        help.Dock = DockStyle.Fill;
+        help.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, help, SizeType.Percent, 100F, new Padding(0, 0, 0, 0));
 
-        panel.Controls.AddRange(new Control[] { title, reference, _referenceLabel, hint, selectMode, _modeLabel, help });
+        panel.Controls.Add(layout);
         return panel;
     }
 
     private Control BuildGridPanel()
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(14) };
-        var title = UiTheme.CreateSectionTitle("ROI 列表");
-        title.Location = new Point(14, 14);
 
-        _grid.Location = new Point(14, 48);
-        _grid.Size = new Size(402, 560);
-        _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _grid.AllowUserToAddRows = false;
-        _grid.AllowUserToDeleteRows = false;
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        var title = UiTheme.CreateSectionTitle("ROI 列表");
+        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 8));
+
+        UiTheme.StyleDataGridView(_grid);
+        _grid.Dock = DockStyle.Fill;
         _grid.ReadOnly = false;
         _grid.MultiSelect = false;
-        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _grid.RowHeadersVisible = false;
-        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
-        _grid.BackgroundColor = UiTheme.Surface;
-        _grid.BorderStyle = BorderStyle.FixedSingle;
+        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Id", HeaderText = "ID", ReadOnly = true });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Kind", HeaderText = "Type", ReadOnly = true });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Expected", HeaderText = "Expected", ReadOnly = true });
@@ -144,25 +155,46 @@ public sealed class RoiCalibrationPage : UserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "W", HeaderText = "W" });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "H", HeaderText = "H" });
         _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "Enabled" });
+        foreach (var name in new[] { "Id", "Kind", "Expected", "Enabled" })
+            _grid.Columns[name].AutoSizeMode = DataGridViewAutoSizeColumnMode.DisplayedCells;
+        foreach (var name in new[] { "X", "Y", "W", "H" })
+            _grid.Columns[name].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+        UiTheme.AddRow(layout, _grid, SizeType.Percent, 100F, new Padding(0, 0, 0, 10));
+
+        var buttons = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        buttons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         var duplicate = UiTheme.CreateButton("复制 ROI");
-        duplicate.Location = new Point(14, 624);
-        duplicate.Size = new Size(120, 34);
-        duplicate.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        duplicate.Size = new Size(120, 36);
+        duplicate.Anchor = AnchorStyles.Left;
         duplicate.Click += (_, _) => DuplicateSelected();
         var delete = UiTheme.CreateButton("删除", false);
-        delete.Location = new Point(144, 624);
-        delete.Size = new Size(100, 34);
-        delete.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+        delete.Size = new Size(100, 36);
+        delete.Anchor = AnchorStyles.Left;
+        delete.Margin = new Padding(10, 0, 0, 0);
         delete.ForeColor = UiTheme.Danger;
         delete.Click += (_, _) => DeleteSelected();
         var fit = UiTheme.CreateButton("适应窗口");
-        fit.Location = new Point(254, 624);
-        fit.Size = new Size(120, 34);
-        fit.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+        fit.Size = new Size(120, 36);
+        fit.Anchor = AnchorStyles.Right;
         fit.Click += (_, _) => _canvas.FitToView();
 
-        panel.Controls.AddRange(new Control[] { title, _grid, duplicate, delete, fit });
+        buttons.Controls.Add(duplicate, 0, 0);
+        buttons.Controls.Add(delete, 1, 0);
+        buttons.Controls.Add(fit, 3, 0);
+        UiTheme.AddRow(layout, buttons, SizeType.Absolute, 44);
+
+        panel.Controls.Add(layout);
         return panel;
     }
 

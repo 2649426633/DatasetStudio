@@ -40,70 +40,160 @@ public sealed class ExportPage : UserControl
     private void BuildLayout()
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(24) };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
         var title = UiTheme.CreateSectionTitle("导出 / 发布 ProductAlignPackage");
-        title.Location = new Point(24, 22);
+        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 10));
 
-        _projectPath.Location = new Point(24, 58);
-        _projectPath.Size = new Size(900, 52);
+        _projectPath.AutoSize = false;
+        _projectPath.Dock = DockStyle.Fill;
         _projectPath.ForeColor = UiTheme.TextSecondary;
+        UiTheme.AddRow(layout, _projectPath, SizeType.Absolute, 52, new Padding(0, 0, 0, 14));
 
-        var generatedTitle = new Label { Text = "即将生成", Location = new Point(24, 128), AutoSize = true, ForeColor = UiTheme.TextSecondary };
+        UiTheme.AddRow(layout, BuildGeneratedCountsPanel(), SizeType.Percent, 100F, Padding.Empty);
+
+        UiTheme.AddRow(layout, BuildActionButtonsPanel(), SizeType.Absolute, 44, new Padding(0, 12, 0, 12));
+
+        _lastPackage.AutoSize = false;
+        _lastPackage.Dock = DockStyle.Fill;
+        _lastPackage.ForeColor = UiTheme.TextSecondary;
+        _lastPackage.Text = "尚未生成本次数据包";
+        UiTheme.AddRow(layout, _lastPackage, SizeType.Absolute, 52, new Padding(0, 0, 0, 14));
+
+        var publishTitle = UiTheme.CreateFieldLabel("发布到 ProductAlignInspector 目标目录");
+        UiTheme.AddRow(layout, publishTitle, SizeType.AutoSize, 0, new Padding(0, 0, 0, 6));
+
+        UiTheme.AddRow(layout, BuildPublishPanel(), SizeType.Absolute, 36);
+
+        var safety = UiTheme.CreateMutedText("安全策略：源图片永不删除/移动/重命名；生成与发布都先进入 staging；复制文件逐个做 SHA-256 校验。发布前备份 DatasetStudio 管理的目标项，失败会尝试自动回滚。");
+        safety.Dock = DockStyle.Fill;
+        safety.TextAlign = ContentAlignment.TopLeft;
+        UiTheme.AddRow(layout, safety, SizeType.Absolute, 60, new Padding(0, 14, 0, 0));
+
+        panel.Controls.Add(layout);
+        Controls.Add(panel);
+    }
+
+    private Control BuildGeneratedCountsPanel()
+    {
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
+
+        var generatedTitle = UiTheme.CreateFieldLabel("即将生成");
         var generated = new Label
         {
             Text = "✅ configs\\<product>.json\n✅ artifacts\\reference\\reference_aligned.png\n✅ dataset_roi_dino\\train\\good\n✅ dataset_roi_dino\\test\\good\n✅ dataset_roi_dino\\test\\ng\n✅ dataset_manifest.csv\n✅ dataset_report.json",
-            Location = new Point(24, 154),
-            Size = new Size(520, 164),
-            Font = new Font("Consolas", 10F),
-            ForeColor = UiTheme.TextPrimary
+            Dock = DockStyle.Fill,
+            Font = new Font("Consolas", 10.5F),
+            ForeColor = UiTheme.TextPrimary,
+            TextAlign = ContentAlignment.TopLeft
         };
 
-        _counts.Location = new Point(585, 154);
-        _counts.Size = new Size(280, 130);
-        _counts.Font = new Font("Consolas", 10F);
+        var countsTitle = UiTheme.CreateFieldLabel("数据统计");
+        _counts.Dock = DockStyle.Fill;
+        _counts.Font = new Font("Consolas", 10.5F);
         _counts.ForeColor = UiTheme.TextPrimary;
+        _counts.TextAlign = ContentAlignment.TopLeft;
+
+        var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, BackColor = UiTheme.Surface };
+        left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        left.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        left.Controls.Add(generatedTitle, 0, 0);
+        left.Controls.Add(generated, 0, 1);
+
+        var right = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = new Padding(32, 0, 0, 0), BackColor = UiTheme.Surface };
+        right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        right.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        right.Controls.Add(countsTitle, 0, 0);
+        right.Controls.Add(_counts, 0, 1);
+
+        table.Controls.Add(left, 0, 0);
+        table.Controls.Add(right, 1, 0);
+        return table;
+    }
+
+    private Control BuildActionButtonsPanel()
+    {
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
         var validate = UiTheme.CreateButton("校验数据");
-        validate.Location = new Point(24, 340);
         validate.Size = new Size(130, 36);
+        validate.Anchor = AnchorStyles.Left;
         validate.Click += (_, _) => ValidateOnly();
         var generate = UiTheme.CreateButton("生成数据包", true);
-        generate.Location = new Point(166, 340);
         generate.Size = new Size(150, 36);
+        generate.Anchor = AnchorStyles.Left;
+        generate.Margin = new Padding(12, 0, 0, 0);
         generate.Click += (_, _) => GeneratePackage();
 
-        _lastPackage.Location = new Point(24, 394);
-        _lastPackage.Size = new Size(920, 52);
-        _lastPackage.ForeColor = UiTheme.TextSecondary;
-        _lastPackage.Text = "尚未生成本次数据包";
+        table.Controls.Add(validate, 0, 0);
+        table.Controls.Add(generate, 1, 0);
+        return table;
+    }
 
-        var publishTitle = new Label { Text = "发布到 ProductAlignInspector 目标目录", Location = new Point(24, 474), AutoSize = true, ForeColor = UiTheme.TextSecondary };
-        _publishTarget.Location = new Point(24, 500);
-        _publishTarget.Size = new Size(650, 30);
+    private Control BuildPublishPanel()
+    {
+        var table = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116F));
+
         _publishTarget.PlaceholderText = @"例如 D:\Brunei";
+        _publishTarget.BorderStyle = BorderStyle.FixedSingle;
+        _publishTarget.BackColor = UiTheme.Surface;
+        _publishTarget.ForeColor = UiTheme.TextPrimary;
+        _publishTarget.Font = new Font("Microsoft YaHei UI", 10F);
+        _publishTarget.AutoSize = false;
+        _publishTarget.Dock = DockStyle.Fill;
+        _publishTarget.Margin = new Padding(0, 0, 8, 0);
+
         var browse = UiTheme.CreateButton("浏览");
-        browse.Location = new Point(686, 498);
-        browse.Size = new Size(88, 32);
+        browse.Dock = DockStyle.Fill;
+        browse.Margin = new Padding(0, 0, 8, 0);
         browse.Click += (_, _) => BrowsePublishTarget();
         var publish = UiTheme.CreateButton("安全发布", false);
-        publish.Location = new Point(786, 498);
-        publish.Size = new Size(110, 32);
+        publish.Dock = DockStyle.Fill;
         publish.Click += (_, _) => PublishPackage();
 
-        var safety = new Label
-        {
-            Text = "安全策略：源图片永不删除/移动/重命名；生成与发布都先进入 staging；复制文件逐个做 SHA-256 校验。发布前备份 DatasetStudio 管理的目标项，失败会尝试自动回滚。",
-            Location = new Point(24, 558),
-            Size = new Size(920, 62),
-            ForeColor = UiTheme.TextMuted
-        };
-
-        panel.Controls.AddRange(new Control[]
-        {
-            title, _projectPath, generatedTitle, generated, _counts,
-            validate, generate, _lastPackage,
-            publishTitle, _publishTarget, browse, publish, safety
-        });
-        Controls.Add(panel);
+        table.Controls.Add(_publishTarget, 0, 0);
+        table.Controls.Add(browse, 1, 0);
+        table.Controls.Add(publish, 2, 0);
+        return table;
     }
 
     private void ValidateOnly()

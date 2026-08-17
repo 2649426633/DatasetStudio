@@ -60,34 +60,41 @@ public sealed class ValidationPage : UserControl
     private void BuildLayout()
     {
         var panel = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Surface, Padding = new Padding(22) };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            Margin = Padding.Empty,
+            BackColor = UiTheme.Surface
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
         var title = UiTheme.CreateSectionTitle("Dataset Validation / 数据完整性校验");
-        title.Location = new Point(22, 20);
-        _summary.Location = new Point(22, 52);
-        _summary.Size = new Size(900, 28);
+        UiTheme.AddRow(layout, title, SizeType.AutoSize, 0, new Padding(0, 0, 0, 8));
+
+        _summary.AutoSize = false;
+        _summary.Dock = DockStyle.Fill;
         _summary.ForeColor = UiTheme.TextSecondary;
+        UiTheme.AddRow(layout, _summary, SizeType.Absolute, 28, new Padding(0, 0, 0, 8));
 
         var run = UiTheme.CreateButton("重新校验", true);
-        run.Location = new Point(22, 88);
-        run.Size = new Size(120, 34);
+        run.Size = new Size(120, 36);
+        run.Anchor = AnchorStyles.Left;
         run.Click += (_, _) => RunValidation();
+        UiTheme.AddRow(layout, run, SizeType.Absolute, 44);
 
-        _grid.Location = new Point(22, 140);
-        _grid.Size = new Size(1000, 520);
-        _grid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        _grid.AllowUserToAddRows = false;
-        _grid.AllowUserToDeleteRows = false;
+        UiTheme.StyleDataGridView(_grid);
+        _grid.Dock = DockStyle.Fill;
         _grid.ReadOnly = true;
-        _grid.RowHeadersVisible = false;
-        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _grid.BackgroundColor = UiTheme.Surface;
-        _grid.BorderStyle = BorderStyle.FixedSingle;
         _grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "State", HeaderText = "状态", Width = 70 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Check", HeaderText = "检查项", Width = 220 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Value", HeaderText = "数量", Width = 90 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Message", HeaderText = "说明", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+        UiTheme.AddRow(layout, _grid, SizeType.Percent, 100F, new Padding(0, 12, 0, 0));
 
-        panel.Controls.AddRange(new Control[] { title, _summary, run, _grid });
+        panel.Controls.Add(layout);
         Controls.Add(panel);
     }
 }
