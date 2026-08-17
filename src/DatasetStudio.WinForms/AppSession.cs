@@ -35,6 +35,7 @@ public sealed class AppSession
     {
         ProjectDirectory = Path.GetFullPath(projectDirectory);
         Project = project;
+        Project.Categories ??= new DatasetCategoryOptions();
         Repository = new CatalogRepository(ProjectDirectory);
         Repository.Initialize();
     }
@@ -68,12 +69,14 @@ public sealed class AppSession
         var json = File.ReadAllText(projectFile);
         var project = JsonSerializer.Deserialize<DatasetProject>(json, JsonOptions)
             ?? throw new InvalidDataException("project.json 内容无效。");
+        project.Categories ??= new DatasetCategoryOptions();
         return new AppSession(projectDirectory, project);
     }
 
     public void SaveProject()
     {
         Directory.CreateDirectory(ProjectDirectory);
+        Project.Categories ??= new DatasetCategoryOptions();
         File.WriteAllText(ProjectFilePath, JsonSerializer.Serialize(Project, JsonOptions));
     }
 
