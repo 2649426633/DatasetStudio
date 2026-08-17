@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DatasetStudio.Core\DatasetStudio.Core.csproj" />
     <ProjectReference Include="..\DatasetStudio.Infrastructure\DatasetStudio.Infrastructure.csproj" />
+    <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260627" />
   </ItemGroup>
 
   <ItemGroup>

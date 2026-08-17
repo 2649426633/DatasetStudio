@@ -37,7 +37,7 @@ public sealed class DatasetValidator
                 r.X + r.Width > referenceWidth || r.Y + r.Height > referenceHeight)
             : 0;
 
-        items.Add(CheckCount("训练 GOOD", trainGood));
+        items.Add(CheckTrainGood(trainGood));
         items.Add(CheckCount("测试 GOOD", testGood));
         items.Add(CheckCount("测试 NG", testNg));
         items.Add(new ValidationItem(
@@ -86,6 +86,29 @@ public sealed class DatasetValidator
     {
         items = Validate(repository, referenceWidth, referenceHeight);
         return items.All(x => x.Severity != ValidationSeverity.Error);
+    }
+
+    private static ValidationItem CheckTrainGood(int value)
+    {
+        if (value < 2)
+        {
+            return new ValidationItem(
+                "训练 GOOD",
+                value,
+                ValidationSeverity.Error,
+                "ProductAlignInspector 建立 Memory Bank 至少需要 2 张不同的 GOOD 原图；建议第一轮准备 10 张以上。");
+        }
+
+        if (value < 10)
+        {
+            return new ValidationItem(
+                "训练 GOOD",
+                value,
+                ValidationSeverity.Warning,
+                "可以进行流程验证，但少于 10 张只适合作为 smoke test；建议补充不同正常波动的 GOOD 原图。");
+        }
+
+        return new ValidationItem("训练 GOOD", value, ValidationSeverity.Ok, "数量满足 ProductAlignInspector 第一轮训练建议");
     }
 
     private static ValidationItem CheckCount(string name, int value) =>

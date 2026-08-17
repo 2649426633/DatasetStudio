@@ -130,10 +130,75 @@ public sealed partial class RoiCalibrationPage : UserControl
             MessageBox.Show(this, "请先新建或打开项目。", "Dataset Studio");
             return;
         }
+
+        if (_rois.Count > 0)
+        {
+            var replace = MessageBox.Show(
+                this,
+                "当前项目已经存在 ROI。更换参考图会改变标准坐标系，现有 ROI 不会自动转换。\r\n\r\n确定继续吗？",
+                "更换参考图",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (replace != DialogResult.Yes) return;
+        }
+
+        var choice = MessageBox.Show(
+            this,
+            "请选择参考图来源：\r\n\r\n" +
+            "【是】从一张正常 GOOD 原图自动定位、旋转矫正并生成 reference_aligned.png\r\n" +
+            "【否】导入已经生成好的 reference_aligned.png\r\n" +
+            "【取消】返回",
+            "参考图",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+
+        if (choice == DialogResult.Yes)
+            CreateReferenceFromGood();
+        else if (choice == DialogResult.No)
+            ImportExistingReference();
+    }
+
+    private void CreateReferenceFromGood()
+    {
+        if (_session is null) return;
         using var dialog = new OpenFileDialog
         {
             Filter = "Image files|*.bmp;*.png;*.jpg;*.jpeg;*.tif;*.tiff|All files|*.*",
-            Title = "选择用于对齐后标准坐标的参考图"
+            Title = "选择一张正常 GOOD 原图创建标准参考图"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            UseWaitCursor = true;
+            var result = _session.CreateReferenceFromGood(dialog.FileName);
+            LoadReferenceAndRois();
+            MessageBox.Show(
+                this,
+                $"reference_aligned.png 已生成。\r\n" +
+                $"尺寸：{result.Width} × {result.Height}\r\n" +
+                $"检测角度：{result.DetectedAngleDeg:F2}°",
+                "参考图创建完成",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "参考图创建失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+        }
+    }
+
+    private void ImportExistingReference()
+    {
+        if (_session is null) return;
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Image files|*.bmp;*.png;*.jpg;*.jpeg;*.tif;*.tiff|All files|*.*",
+            Title = "选择已有 reference_aligned.png"
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try

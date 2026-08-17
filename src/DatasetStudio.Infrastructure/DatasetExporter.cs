@@ -108,6 +108,9 @@ public sealed class DatasetExporter
 
             var manifestPath = Path.Combine(staging, "dataset_manifest.csv");
             File.WriteAllText(manifestPath, manifest.ToString(), new UTF8Encoding(true));
+
+            ValidateProductAlignCompatibility(staging, configSource);
+
             var report = new
             {
                 schema_version = 1,
@@ -117,7 +120,9 @@ public sealed class DatasetExporter
                 test_good = testGood,
                 test_ng = testNg,
                 source_files_are_read_only = true,
-                source_target_sha256_verified = true
+                source_target_sha256_verified = true,
+                product_align_inspector_compatible = true,
+                dataset_layout = "dataset_roi_dino.v1"
             };
             File.WriteAllText(
                 Path.Combine(staging, "dataset_report.json"),
@@ -156,12 +161,85 @@ public sealed class DatasetExporter
     {
         var ids = image.GetDefectRoiIds();
         if (ids.Count == 0) return "defect_UNKNOWN";
-        return image.DefectType switch
+
+        // ProductAlignInspector exact-label parser understands missing_ and defect_.
+        // The precise defect type (Wrong/Excess/Surface/Other) remains in dataset_manifest.csv.
+        return image.DefectType == DefectType.Missing
+            ? string.Join("+", ids.Select(id => $"missing_{id}"))
+            : string.Join("+", ids.Select(id => $"defect_{id}"));
+    }
+
+    private static void ValidateProductAlignCompatibility(string packageRoot, string sourceConfigPath)
+    {
+        var reference = Path.Combine(packageRoot, "artifacts", "reference", "reference_aligned.png");
+        var trainGood = Path.Combine(packageRoot, "dataset_roi_dino", "train", "good");
+        var ngRoot = Path.Combine(packageRoot, "dataset_roi_dino", "test", "ng");
+
+        if (!File.Exists(reference))
+            throw new InvalidOperationException("ProductAlignInspector 兼容性检查失败：缺少 artifacts/reference/reference_aligned.png。");
+
+        var trainGoodCount = Directory.Exists(trainGood)
+            ? Directory.EnumerateFiles(trainGood).Count(IsSupportedImage)
+            : 0;
+        if (trainGoodCount < 2)
+            throw new InvalidOperationException("ProductAlignInspector 兼容性检查失败：train/good 至少需要 2 张 GOOD 原图。");
+
+        var knownRois = ReadEnabledRoiIds(sourceConfigPath);
+        if (knownRois.Count == 0)
+            throw new InvalidOperationException("ProductAlignInspector 兼容性检查失败：当前没有启用的 ROI。");
+
+        if (!Directory.Exists(ngRoot)) return;
+
+        foreach (var scenarioDirectory in Directory.EnumerateDirectories(ngRoot))
         {
-            DefectType.Missing => string.Join("+", ids.Select(id => $"missing_{id}")),
-            DefectType.Wrong => string.Join("+", ids.Select(id => $"wrong_{id}")),
-            _ => string.Join("+", ids.Select(id => $"defect_{id}"))
-        };
+            var scenario = Path.GetFileName(scenarioDirectory);
+            foreach (var token in scenario.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                string roiId;
+                if (token.StartsWith("missing_", StringComparison.OrdinalIgnoreCase))
+                    roiId = token["missing_".Length..];
+                else if (token.StartsWith("defect_", StringComparison.OrdinalIgnoreCase))
+                    roiId = token["defect_".Length..];
+                else
+                    throw new InvalidOperationException(
+                        $"ProductAlignInspector 兼容性检查失败：NG 目录“{scenario}”包含不支持的前缀。");
+
+                if (!knownRois.Contains(roiId))
+                    throw new InvalidOperationException(
+                        $"ProductAlignInspector 兼容性检查失败：NG 目录“{scenario}”引用不存在或未启用的 ROI “{roiId}”。");
+            }
+        }
+    }
+
+    private static HashSet<string> ReadEnabledRoiIds(string configPath)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(configPath));
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var propertyName in new[] { "screw_slots", "spring_regions", "anomaly_regions" })
+        {
+            if (!document.RootElement.TryGetProperty(propertyName, out var array) ||
+                array.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (var item in array.EnumerateArray())
+            {
+                var enabled = !item.TryGetProperty("enabled", out var enabledElement) ||
+                              enabledElement.ValueKind != JsonValueKind.False;
+                if (!enabled || !item.TryGetProperty("id", out var idElement))
+                    continue;
+
+                var id = idElement.GetString();
+                if (!string.IsNullOrWhiteSpace(id))
+                    result.Add(id);
+            }
+        }
+        return result;
+    }
+
+    private static bool IsSupportedImage(string path)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        return extension is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tif" or ".tiff";
     }
 
     private static void CopyAndVerify(string source, string target, string? expectedSha = null)

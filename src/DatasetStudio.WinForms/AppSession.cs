@@ -2,6 +2,7 @@ using System.Drawing.Imaging;
 using System.Text.Json;
 using DatasetStudio.Core;
 using DatasetStudio.Infrastructure;
+using DatasetStudio.WinForms.Services;
 
 namespace DatasetStudio.WinForms;
 
@@ -77,6 +78,19 @@ public sealed class AppSession
         File.WriteAllText(ProjectFilePath, JsonSerializer.Serialize(Project, JsonOptions));
     }
 
+    public ReferenceBuildResult CreateReferenceFromGood(string sourceFile)
+    {
+        var directory = Path.Combine(ProjectDirectory, "reference");
+        Directory.CreateDirectory(directory);
+        var target = Path.Combine(directory, "reference_aligned.png");
+        var result = ProductAlignmentService.CreateReferenceFromGood(sourceFile, target);
+        Project.ReferenceImage = "reference\\reference_aligned.png";
+        SaveProject();
+        ClearAlignmentCache();
+        WriteProductConfig();
+        return result;
+    }
+
     public void ImportReferenceImage(string sourceFile)
     {
         var directory = Path.Combine(ProjectDirectory, "reference");
@@ -87,7 +101,56 @@ public sealed class AppSession
             copy.Save(target, ImageFormat.Png);
         Project.ReferenceImage = "reference\\reference_aligned.png";
         SaveProject();
+        ClearAlignmentCache();
         WriteProductConfig();
+    }
+
+    public AlignmentPreviewResult GetAlignmentPreview(string sourcePath, string sourceSha256)
+    {
+        if (!File.Exists(ReferenceImagePath))
+        {
+            return new AlignmentPreviewResult
+            {
+                Success = false,
+                Error = "尚未设置 reference_aligned.png。"
+            };
+        }
+
+        var referenceInfo = new FileInfo(ReferenceImagePath);
+        var sourceKey = string.IsNullOrWhiteSpace(sourceSha256)
+            ? CatalogRepository.ComputeSha256(sourcePath)
+            : sourceSha256;
+        var shortSha = sourceKey.Length > 20 ? sourceKey[..20] : sourceKey;
+        var cacheKey = $"{shortSha}_{referenceInfo.Length}_{referenceInfo.LastWriteTimeUtc.Ticks}";
+        var cacheDirectory = Path.Combine(ProjectDirectory, "cache", "aligned");
+        var alignedPath = Path.Combine(cacheDirectory, cacheKey + ".png");
+        var metadataPath = Path.Combine(cacheDirectory, cacheKey + ".json");
+
+        var cached = ProductAlignmentService.ReadMetadata(metadataPath);
+        if (cached?.Success == true && File.Exists(alignedPath))
+        {
+            cached.AlignedPath = alignedPath;
+            return cached;
+        }
+
+        var result = ProductAlignmentService.AlignToReference(sourcePath, ReferenceImagePath, alignedPath);
+        if (result.Success)
+            ProductAlignmentService.WriteMetadata(metadataPath, result);
+        return result;
+    }
+
+    public void ClearAlignmentCache()
+    {
+        var cacheDirectory = Path.Combine(ProjectDirectory, "cache", "aligned");
+        try
+        {
+            if (Directory.Exists(cacheDirectory))
+                Directory.Delete(cacheDirectory, true);
+        }
+        catch
+        {
+            // Cache is expendable. A locked preview file should not block changing the reference.
+        }
     }
 
     public void WriteProductConfig()

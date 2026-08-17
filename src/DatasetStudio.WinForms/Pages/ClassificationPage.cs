@@ -1,4 +1,5 @@
 using DatasetStudio.Core;
+using DatasetStudio.WinForms.Services;
 
 namespace DatasetStudio.WinForms.Pages;
 
@@ -6,6 +7,9 @@ public sealed partial class ClassificationPage : UserControl
 {
     private AppSession? _session;
     private List<ImageRecord> _images = new();
+    private List<RoiDefinition> _rois = new();
+    private AlignmentPreviewResult? _currentAlignment;
+    private bool _showRaw;
     private bool _loading;
 
     public ClassificationPage()
@@ -34,6 +38,16 @@ public sealed partial class ClassificationPage : UserControl
         if (key == Keys.G) { _testGood.Checked = true; return true; }
         if (key == Keys.N) { _testNg.Checked = true; return true; }
         if (key == Keys.I) { _ignore.Checked = true; return true; }
+        if (key == Keys.V)
+        {
+            _showRaw = !_showRaw;
+            if (_imagesList.SelectedItems.Count > 0 &&
+                _imagesList.SelectedItems[0].Tag is ImageRecord selected)
+            {
+                RefreshImagePreview(selected);
+            }
+            return true;
+        }
         if (key == Keys.Enter) { TrySaveCurrent(true); return true; }
         if (key == Keys.Space) { MoveNext(true); return true; }
         if (key == Keys.Left) { MoveRelative(-1); return true; }
@@ -170,10 +184,12 @@ public sealed partial class ClassificationPage : UserControl
     private void ReloadRois()
     {
         if (_session is null) return;
-        var rois = _session.Repository.LoadRois();
+        _rois = _session.Repository.LoadRois();
         _roiList.Items.Clear();
-        foreach (var roi in rois.Where(x => x.Enabled)) _roiList.Items.Add(roi.Id);
-        _canvas.SetRois(rois);
+        foreach (var roi in _rois.Where(x => x.Enabled))
+            _roiList.Items.Add(roi.Id);
+
+        ApplyRoisForCurrentPreview();
     }
 
     private void ShowSelectedImage()
@@ -181,16 +197,24 @@ public sealed partial class ClassificationPage : UserControl
         if (_loading || _imagesList.SelectedItems.Count == 0) return;
         if (_imagesList.SelectedItems[0].Tag is not ImageRecord image) return;
         _loading = true;
+        UseWaitCursor = true;
         try
         {
             _fileName.Text = image.FileName;
-            _pathLabel.Text = image.SourcePath;
-            _canvas.LoadImage(image.SourcePath);
-            if (_session is not null && image.Width == 0 && _canvas.ImageSize.Width > 0)
+            _currentAlignment = null;
+
+            if (_session is not null)
             {
-                _session.Repository.UpdateImageDimensions(image.Id, _canvas.ImageSize.Width, _canvas.ImageSize.Height);
-                image.Width = _canvas.ImageSize.Width;
-                image.Height = _canvas.ImageSize.Height;
+                if (image.Width == 0 && File.Exists(image.SourcePath))
+                {
+                    using var source = Image.FromFile(image.SourcePath);
+                    _session.Repository.UpdateImageDimensions(image.Id, source.Width, source.Height);
+                    image.Width = source.Width;
+                    image.Height = source.Height;
+                }
+
+                if (File.Exists(_session.ReferenceImagePath))
+                    _currentAlignment = _session.GetAlignmentPreview(image.SourcePath, image.Sha256);
             }
 
             _trainGood.Checked = image.Split == DatasetSplit.Train && image.Truth == ImageTruth.Good;
@@ -198,17 +222,86 @@ public sealed partial class ClassificationPage : UserControl
             _testNg.Checked = image.Split == DatasetSplit.Test && image.Truth == ImageTruth.Ng;
             _ignore.Checked = image.Split == DatasetSplit.Ignore || image.Truth == ImageTruth.Ignore;
             for (var i = 0; i < _roiList.Items.Count; i++)
-                _roiList.SetItemChecked(i, image.GetDefectRoiIds().Contains(_roiList.Items[i]?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase));
+            {
+                _roiList.SetItemChecked(
+                    i,
+                    image.GetDefectRoiIds().Contains(
+                        _roiList.Items[i]?.ToString() ?? string.Empty,
+                        StringComparer.OrdinalIgnoreCase));
+            }
+
             if (image.DefectType != DefectType.None)
                 _defectType.SelectedItem = image.DefectType.ToString();
             _note.Text = image.Note;
+
+            RefreshImagePreview(image);
+        }
+        catch (Exception ex)
+        {
+            _currentAlignment = new AlignmentPreviewResult
+            {
+                Success = false,
+                Method = "failed",
+                Error = ex.Message
+            };
+            _canvas.LoadImage(image.SourcePath);
+            _canvas.SetRois(Array.Empty<RoiDefinition>());
+            _pathLabel.Text = $"{image.SourcePath}   |   配准失败：{ex.Message}";
         }
         finally
         {
+            UseWaitCursor = false;
             _loading = false;
             UpdateNgControls();
             RefreshCategoryButtonStyles();
         }
+    }
+
+    private void RefreshImagePreview(ImageRecord image)
+    {
+        var alignedOk =
+            _currentAlignment?.Success == true &&
+            !string.IsNullOrWhiteSpace(_currentAlignment.AlignedPath) &&
+            File.Exists(_currentAlignment.AlignedPath);
+
+        if (!_showRaw && alignedOk)
+        {
+            _canvas.LoadImage(_currentAlignment!.AlignedPath);
+            _canvas.SetRois(_rois);
+            _pathLabel.Text =
+                $"{image.SourcePath}   |   对齐预览（V 切换原图）   |   {_currentAlignment.Summary}";
+        }
+        else
+        {
+            _canvas.LoadImage(image.SourcePath);
+            _canvas.SetRois(Array.Empty<RoiDefinition>());
+
+            if (_showRaw && alignedOk)
+            {
+                _pathLabel.Text =
+                    $"{image.SourcePath}   |   原图（V 切换对齐图）   |   {_currentAlignment!.Summary}";
+            }
+            else if (_currentAlignment is null)
+            {
+                _pathLabel.Text =
+                    $"{image.SourcePath}   |   尚未设置 reference_aligned.png，当前仅显示原图";
+            }
+            else
+            {
+                _pathLabel.Text =
+                    $"{image.SourcePath}   |   配准失败：{_currentAlignment.Error}";
+            }
+        }
+
+        UpdateNgControls();
+    }
+
+    private void ApplyRoisForCurrentPreview()
+    {
+        if (_showRaw || _currentAlignment?.Success != true)
+            _canvas.SetRois(Array.Empty<RoiDefinition>());
+        else
+            _canvas.SetRois(_rois);
     }
 
     private void TrySaveCurrent(bool moveNext)
@@ -225,15 +318,32 @@ public sealed partial class ClassificationPage : UserControl
         else if (_testGood.Checked) { split = DatasetSplit.Test; truth = ImageTruth.Good; }
         else if (_testNg.Checked)
         {
+            if (_currentAlignment?.Success != true)
+            {
+                MessageBox.Show(
+                    this,
+                    "Test NG 需要先成功配准到 reference_aligned.png，才能可靠选择标准坐标 ROI。\n\n请检查参考图/原图，或将无法使用的图片设为 Ignore。",
+                    "配准未通过",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             split = DatasetSplit.Test;
             truth = ImageTruth.Ng;
-            rois = _roiList.CheckedItems.Cast<object>().Select(x => x.ToString()!).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+            rois = _roiList.CheckedItems
+                .Cast<object>()
+                .Select(x => x.ToString()!)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToArray();
             if (rois.Length == 0)
             {
                 MessageBox.Show(this, "Test NG 必须至少选择一个异常 ROI。", "标签不完整", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            defectType = Enum.TryParse<DefectType>(_defectType.SelectedItem?.ToString(), out var parsed) ? parsed : DefectType.Other;
+            defectType = Enum.TryParse<DefectType>(_defectType.SelectedItem?.ToString(), out var parsed)
+                ? parsed
+                : DefectType.Other;
         }
         else if (_ignore.Checked) { split = DatasetSplit.Ignore; truth = ImageTruth.Ignore; }
         else
@@ -272,7 +382,8 @@ public sealed partial class ClassificationPage : UserControl
         for (var offset = 1; offset <= _imagesList.Items.Count; offset++)
         {
             var index = (start + offset) % _imagesList.Items.Count;
-            if (!onlyUnclassified || _imagesList.Items[index].Tag is ImageRecord record && !record.IsClassified)
+            if (!onlyUnclassified ||
+                _imagesList.Items[index].Tag is ImageRecord record && !record.IsClassified)
             {
                 _imagesList.Items[index].Selected = true;
                 _imagesList.Items[index].EnsureVisible();
@@ -292,7 +403,7 @@ public sealed partial class ClassificationPage : UserControl
 
     private void UpdateNgControls()
     {
-        var enabled = _testNg.Checked;
+        var enabled = _testNg.Checked && _currentAlignment?.Success == true;
         _roiList.Enabled = enabled;
         _defectType.Enabled = enabled;
     }
