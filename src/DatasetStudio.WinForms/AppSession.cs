@@ -179,13 +179,14 @@ public sealed class AppSession
                 enabled = x.Enabled
             });
         var anomalyRegions = rois
-            .Where(x => x.Kind == RoiKind.AnomalyRegion)
+            .Where(x => x.Kind is RoiKind.AnomalyRegion or RoiKind.CustomRegion)
             .OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
             .Select(x => new
             {
                 id = x.Id,
                 roi = new[] { x.X, x.Y, x.Width, x.Height },
-                enabled = x.Enabled
+                enabled = x.Enabled,
+                custom_type = x.Kind == RoiKind.CustomRegion ? x.Expected : null
             });
 
         var config = new

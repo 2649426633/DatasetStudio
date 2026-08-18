@@ -33,7 +33,8 @@ public enum RoiKind
     ScrewSlot = 1,
     EmptySlot = 2,
     SpringRegion = 3,
-    AnomalyRegion = 4
+    AnomalyRegion = 4,
+    CustomRegion = 5
 }
 
 public enum ValidationSeverity

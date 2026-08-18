@@ -121,6 +121,20 @@ public sealed partial class ClassificationPage : UserControl
     {
         RefreshCategoryButtonStyles();
         UpdateNgControls();
+
+        if (_loading || sender is not RadioButton option || !option.Checked)
+            return;
+
+        // NG still needs one or more ROI selections before it can be saved reliably.
+        if (ReferenceEquals(option, _testNg))
+            return;
+
+        BeginInvoke(new Action(() =>
+        {
+            if (_loading || !option.Checked || _testNg.Checked)
+                return;
+            TrySaveCurrent(true);
+        }));
     }
 
     private void RefreshCategoryButtonStyles()
