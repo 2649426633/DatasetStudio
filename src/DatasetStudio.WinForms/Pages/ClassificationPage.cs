@@ -5,10 +5,15 @@ namespace DatasetStudio.WinForms.Pages;
 
 public sealed partial class ClassificationPage : UserControl
 {
+    private readonly SemaphoreSlim _alignmentGate = new(1, 1);
     private AppSession? _session;
     private List<ImageRecord> _images = new();
     private List<RoiDefinition> _rois = new();
     private AlignmentPreviewResult? _currentAlignment;
+    private CancellationTokenSource? _scanCts;
+    private CancellationTokenSource? _alignmentCts;
+    private long _previewRequestId;
+    private string _scanStatus = string.Empty;
     private bool _showRaw;
     private bool _loading;
 
@@ -18,14 +23,25 @@ public sealed partial class ClassificationPage : UserControl
         ConfigureRuntimeStyles();
         UpdateNgControls();
         ApplyResponsiveLayout();
+        Disposed += (_, _) => CancelBackgroundWork();
     }
 
     public void BindSession(AppSession session)
     {
+        var sessionChanged = !ReferenceEquals(_session, session);
+        if (sessionChanged)
+            CancelBackgroundWork();
+
         _session = session;
-        session.Repository.ScanSourceDirectory(session.Project.SourceDirectory);
+        _currentAlignment = null;
+        _showRaw = false;
         ReloadRois();
         ReloadImages();
+
+        // Opening a project must never wait for a full source-directory SHA scan.
+        // Existing catalog content is shown immediately; source reconciliation runs behind it.
+        if (sessionChanged)
+            StartBackgroundScan(session);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -111,10 +127,10 @@ public sealed partial class ClassificationPage : UserControl
     }
 
     private void ClassificationPage_Resize(object? sender, EventArgs e) => ApplyResponsiveLayout();
-    private void RescanButton_Click(object? sender, EventArgs e) => Rescan();
+    private async void RescanButton_Click(object? sender, EventArgs e) => await ScanSourceDirectoryAsync(showCompletionMessage: true);
     private void SearchBox_TextChanged(object? sender, EventArgs e) => ReloadList();
     private void OnlyUnclassified_CheckedChanged(object? sender, EventArgs e) => ReloadList();
-    private void ImagesList_SelectedIndexChanged(object? sender, EventArgs e) => ShowSelectedImage();
+    private async void ImagesList_SelectedIndexChanged(object? sender, EventArgs e) => await ShowSelectedImageAsync();
     private void SaveNext_Click(object? sender, EventArgs e) => TrySaveCurrent(true);
 
     private void Category_CheckedChanged(object? sender, EventArgs e)
@@ -153,18 +169,77 @@ public sealed partial class ClassificationPage : UserControl
         radio.FlatAppearance.MouseOverBackColor = radio.Checked ? activeColor : UiTheme.SurfaceHover;
     }
 
-    private void Rescan()
+    private void StartBackgroundScan(AppSession session)
     {
-        if (_session is null) return;
+        _ = ScanSourceDirectoryAsync(showCompletionMessage: false, expectedSession: session);
+    }
+
+    private async Task ScanSourceDirectoryAsync(
+        bool showCompletionMessage,
+        AppSession? expectedSession = null)
+    {
+        var session = expectedSession ?? _session;
+        if (session is null) return;
+
+        _scanCts?.Cancel();
+        _scanCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _scanCts = cts;
+        _scanStatus = "后台扫描源目录…";
+        UpdateStats();
+
+        var selectedId = GetSelectedImageId();
         try
         {
-            var added = _session.Repository.ScanSourceDirectory(_session.Project.SourceDirectory);
-            ReloadImages();
-            MessageBox.Show(this, $"扫描完成，新加入 {added} 张图片。", "Dataset Studio", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var added = await session.Repository.ScanSourceDirectoryAsync(
+                session.Project.SourceDirectory,
+                cts.Token);
+
+            if (cts.IsCancellationRequested || !ReferenceEquals(session, _session))
+                return;
+
+            _scanStatus = added > 0
+                ? $"扫描完成，新加入 {added} 张"
+                : "扫描完成";
+            ReloadImages(selectedId);
+
+            if (showCompletionMessage)
+            {
+                MessageBox.Show(
+                    this,
+                    $"扫描完成，新加入 {added} 张图片。",
+                    "Dataset Studio",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Switching project or restarting a scan intentionally cancels the old scan.
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "扫描失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (!ReferenceEquals(session, _session)) return;
+            _scanStatus = $"后台扫描失败：{ex.Message}";
+            UpdateStats();
+            if (showCompletionMessage)
+            {
+                MessageBox.Show(
+                    this,
+                    ex.Message,
+                    "扫描失败",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_scanCts, cts))
+            {
+                _scanCts.Dispose();
+                _scanCts = null;
+                UpdateStats();
+            }
         }
     }
 
@@ -179,18 +254,26 @@ public sealed partial class ClassificationPage : UserControl
     private void ReloadList(long? selectId = null)
     {
         _imagesList.BeginUpdate();
-        _imagesList.Items.Clear();
-        var query = _searchBox.Text.Trim();
-        foreach (var image in _images.Where(x =>
-                     (!_onlyUnclassified.Checked || !x.IsClassified) &&
-                     (query.Length == 0 || x.FileName.Contains(query, StringComparison.OrdinalIgnoreCase))))
+        try
         {
-            var item = new ListViewItem(image.FileName) { Tag = image };
-            item.SubItems.Add(image.StatusText);
-            _imagesList.Items.Add(item);
-            if (selectId.HasValue && image.Id == selectId.Value) item.Selected = true;
+            _imagesList.Items.Clear();
+            var query = _searchBox.Text.Trim();
+            foreach (var image in _images.Where(x =>
+                         (!_onlyUnclassified.Checked || !x.IsClassified) &&
+                         (query.Length == 0 || x.FileName.Contains(query, StringComparison.OrdinalIgnoreCase))))
+            {
+                var item = new ListViewItem(image.FileName) { Tag = image };
+                item.SubItems.Add(image.StatusText);
+                _imagesList.Items.Add(item);
+                if (selectId.HasValue && image.Id == selectId.Value)
+                    item.Selected = true;
+            }
         }
-        _imagesList.EndUpdate();
+        finally
+        {
+            _imagesList.EndUpdate();
+        }
+
         if (_imagesList.SelectedItems.Count == 0 && _imagesList.Items.Count > 0)
             _imagesList.Items[0].Selected = true;
     }
@@ -206,29 +289,37 @@ public sealed partial class ClassificationPage : UserControl
         ApplyRoisForCurrentPreview();
     }
 
-    private void ShowSelectedImage()
+    private async Task ShowSelectedImageAsync()
     {
-        if (_loading || _imagesList.SelectedItems.Count == 0) return;
+        if (_imagesList.SelectedItems.Count == 0) return;
         if (_imagesList.SelectedItems[0].Tag is not ImageRecord image) return;
+        var session = _session;
+        if (session is null) return;
+
+        _alignmentCts?.Cancel();
+        _alignmentCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _alignmentCts = cts;
+        var requestId = Interlocked.Increment(ref _previewRequestId);
+
         _loading = true;
-        UseWaitCursor = true;
         try
         {
             _fileName.Text = image.FileName;
             _currentAlignment = null;
 
-            if (_session is not null)
-            {
-                if (image.Width == 0 && File.Exists(image.SourcePath))
-                {
-                    using var source = Image.FromFile(image.SourcePath);
-                    _session.Repository.UpdateImageDimensions(image.Id, source.Width, source.Height);
-                    image.Width = source.Width;
-                    image.Height = source.Height;
-                }
+            // Show the raw image immediately. Expensive SIFT/ECC work happens later in the background.
+            _canvas.LoadImage(image.SourcePath);
+            _canvas.SetRois(Array.Empty<RoiDefinition>());
 
-                if (File.Exists(_session.ReferenceImagePath))
-                    _currentAlignment = _session.GetAlignmentPreview(image.SourcePath, image.Sha256);
+            if (image.Width == 0 && _canvas.ImageSize.Width > 0)
+            {
+                session.Repository.UpdateImageDimensions(
+                    image.Id,
+                    _canvas.ImageSize.Width,
+                    _canvas.ImageSize.Height);
+                image.Width = _canvas.ImageSize.Width;
+                image.Height = _canvas.ImageSize.Height;
             }
 
             _trainGood.Checked = image.Split == DatasetSplit.Train && image.Truth == ImageTruth.Good;
@@ -248,7 +339,9 @@ public sealed partial class ClassificationPage : UserControl
                 _defectType.SelectedItem = image.DefectType.ToString();
             _note.Text = image.Note;
 
-            RefreshImagePreview(image);
+            _pathLabel.Text = File.Exists(session.ReferenceImagePath)
+                ? $"{image.SourcePath}   |   正在后台配准…（界面可继续操作）"
+                : $"{image.SourcePath}   |   尚未设置 reference_aligned.png，当前仅显示原图";
         }
         catch (Exception ex)
         {
@@ -258,16 +351,79 @@ public sealed partial class ClassificationPage : UserControl
                 Method = "failed",
                 Error = ex.Message
             };
-            _canvas.LoadImage(image.SourcePath);
-            _canvas.SetRois(Array.Empty<RoiDefinition>());
-            _pathLabel.Text = $"{image.SourcePath}   |   配准失败：{ex.Message}";
+            _pathLabel.Text = $"{image.SourcePath}   |   图片加载失败：{ex.Message}";
         }
         finally
         {
-            UseWaitCursor = false;
             _loading = false;
             UpdateNgControls();
             RefreshCategoryButtonStyles();
+        }
+
+        if (!File.Exists(session.ReferenceImagePath) || cts.IsCancellationRequested)
+            return;
+
+        try
+        {
+            var result = await RunAlignmentAsync(session, image, cts.Token);
+            if (cts.IsCancellationRequested ||
+                requestId != _previewRequestId ||
+                !ReferenceEquals(session, _session) ||
+                !IsCurrentSelection(image.Id))
+            {
+                return;
+            }
+
+            _currentAlignment = result;
+            RefreshImagePreview(image);
+        }
+        catch (OperationCanceledException)
+        {
+            // Rapid navigation intentionally abandons stale preview requests.
+        }
+        catch (Exception ex)
+        {
+            if (requestId != _previewRequestId ||
+                !ReferenceEquals(session, _session) ||
+                !IsCurrentSelection(image.Id))
+            {
+                return;
+            }
+
+            _currentAlignment = new AlignmentPreviewResult
+            {
+                Success = false,
+                Method = "failed",
+                Error = ex.Message
+            };
+            RefreshImagePreview(image);
+        }
+        finally
+        {
+            if (ReferenceEquals(_alignmentCts, cts))
+            {
+                _alignmentCts.Dispose();
+                _alignmentCts = null;
+            }
+        }
+    }
+
+    private async Task<AlignmentPreviewResult> RunAlignmentAsync(
+        AppSession session,
+        ImageRecord image,
+        CancellationToken cancellationToken)
+    {
+        await _alignmentGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await Task.Run(
+                () => session.GetAlignmentPreview(image.SourcePath, image.Sha256))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _alignmentGate.Release();
         }
     }
 
@@ -297,8 +453,10 @@ public sealed partial class ClassificationPage : UserControl
             }
             else if (_currentAlignment is null)
             {
-                _pathLabel.Text =
-                    $"{image.SourcePath}   |   尚未设置 reference_aligned.png，当前仅显示原图";
+                var hasReference = _session is not null && File.Exists(_session.ReferenceImagePath);
+                _pathLabel.Text = hasReference
+                    ? $"{image.SourcePath}   |   正在后台配准…（界面可继续操作）"
+                    : $"{image.SourcePath}   |   尚未设置 reference_aligned.png，当前仅显示原图";
             }
             else
             {
@@ -336,7 +494,7 @@ public sealed partial class ClassificationPage : UserControl
             {
                 MessageBox.Show(
                     this,
-                    "Test NG 需要先成功配准到 reference_aligned.png，才能可靠选择标准坐标 ROI。\n\n请检查参考图/原图，或将无法使用的图片设为 Ignore。",
+                    "Test NG 需要先成功配准到 reference_aligned.png，才能可靠选择标准坐标 ROI。\n\n配准正在后台运行时界面不会卡住；请等当前图片出现 ROI 后再标 NG，或将无法使用的图片设为 Ignore。",
                     "配准未通过",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
@@ -415,6 +573,29 @@ public sealed partial class ClassificationPage : UserControl
         _imagesList.Items[next].EnsureVisible();
     }
 
+    private bool IsCurrentSelection(long imageId) =>
+        _imagesList.SelectedItems.Count > 0 &&
+        _imagesList.SelectedItems[0].Tag is ImageRecord current &&
+        current.Id == imageId;
+
+    private long? GetSelectedImageId() =>
+        _imagesList.SelectedItems.Count > 0 &&
+        _imagesList.SelectedItems[0].Tag is ImageRecord current
+            ? current.Id
+            : null;
+
+    private void CancelBackgroundWork()
+    {
+        _scanCts?.Cancel();
+        _scanCts?.Dispose();
+        _scanCts = null;
+
+        _alignmentCts?.Cancel();
+        _alignmentCts?.Dispose();
+        _alignmentCts = null;
+        Interlocked.Increment(ref _previewRequestId);
+    }
+
     private void UpdateNgControls()
     {
         var enabled = _testNg.Checked && _currentAlignment?.Success == true;
@@ -424,8 +605,15 @@ public sealed partial class ClassificationPage : UserControl
 
     private void UpdateStats()
     {
-        if (_session is null) { _stats.Text = "尚未打开项目"; return; }
+        if (_session is null)
+        {
+            _stats.Text = "尚未打开项目";
+            return;
+        }
+
         var c = _session.Repository.GetCounts();
-        _stats.Text = $"已分类 {c.Classified}/{c.Total}   |   Train GOOD {c.TrainGood}   |   Test GOOD {c.TestGood}   |   NG {c.TestNg}   |   Ignore {c.Ignored}   |   未分类 {c.Unclassified}";
+        var prefix = string.IsNullOrWhiteSpace(_scanStatus) ? string.Empty : _scanStatus + "   |   ";
+        _stats.Text = prefix +
+            $"已分类 {c.Classified}/{c.Total}   |   Train GOOD {c.TrainGood}   |   Test GOOD {c.TestGood}   |   NG {c.TestNg}   |   Ignore {c.Ignored}   |   未分类 {c.Unclassified}";
     }
 }

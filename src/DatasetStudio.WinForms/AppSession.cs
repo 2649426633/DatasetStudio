@@ -55,7 +55,9 @@ public sealed class AppSession
         };
         var session = new AppSession(projectDirectory, project);
         session.SaveProject();
-        session.Repository.ScanSourceDirectory(project.SourceDirectory);
+
+        // Do not scan/hash source images on the UI thread here. ClassificationPage
+        // starts the initial scan in the background after the project is visible.
         session.WriteProductConfig();
         return session;
     }

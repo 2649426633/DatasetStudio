@@ -13,7 +13,11 @@ public sealed class CatalogRepository
     {
         Directory.CreateDirectory(projectDirectory);
         var dbPath = Path.Combine(projectDirectory, "catalog.db");
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            DefaultTimeout = 5
+        }.ToString();
     }
 
     public void Initialize()
@@ -29,6 +33,8 @@ public sealed class CatalogRepository
                 SourcePath TEXT NOT NULL UNIQUE,
                 FileName TEXT NOT NULL,
                 Sha256 TEXT NOT NULL,
+                SourceLength INTEGER NOT NULL DEFAULT -1,
+                SourceLastWriteUtcTicks INTEGER NOT NULL DEFAULT -1,
                 Width INTEGER NOT NULL DEFAULT 0,
                 Height INTEGER NOT NULL DEFAULT 0,
                 Split INTEGER NOT NULL DEFAULT 0,
@@ -64,9 +70,17 @@ public sealed class CatalogRepository
             CREATE INDEX IF NOT EXISTS IX_Images_SplitTruth ON Images(Split, Truth);
             """;
         command.ExecuteNonQuery();
+        EnsureImageMetadataColumns(connection);
     }
 
-    public int ScanSourceDirectory(string sourceDirectory)
+    public Task<int> ScanSourceDirectoryAsync(
+        string sourceDirectory,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ScanSourceDirectory(sourceDirectory, cancellationToken), cancellationToken);
+
+    public int ScanSourceDirectory(
+        string sourceDirectory,
+        CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(sourceDirectory))
             throw new DirectoryNotFoundException(sourceDirectory);
@@ -80,52 +94,122 @@ public sealed class CatalogRepository
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        using var connection = Open();
-        var existing = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var existing = new Dictionary<string, ExistingSourceState>(StringComparer.OrdinalIgnoreCase);
+        using (var connection = Open())
         using (var read = connection.CreateCommand())
         {
-            read.CommandText = "SELECT SourcePath, Sha256 FROM Images;";
+            read.CommandText = """
+                SELECT SourcePath, FileName, Sha256, SourceLength, SourceLastWriteUtcTicks
+                FROM Images;
+                """;
             using var reader = read.ExecuteReader();
             while (reader.Read())
-                existing[reader.GetString(0)] = reader.GetString(1);
+            {
+                existing[reader.GetString(0)] = new ExistingSourceState(
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetInt64(3),
+                    reader.GetInt64(4));
+            }
         }
 
-        using var transaction = connection.BeginTransaction();
-        var inserted = 0;
+        // Hashing is intentionally done before opening a write transaction.
+        // Large industrial images can take seconds/minutes to hash; keeping SQLite
+        // unlocked during that work lets classification/undo remain responsive.
+        var pending = new List<PendingSourceUpdate>();
         foreach (var file in files)
         {
-            var fullPath = Path.GetFullPath(file);
-            var sha = ComputeSha256(fullPath);
-            existing.TryGetValue(fullPath, out var oldSha);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            using var command = connection.CreateCommand();
+            var fullPath = Path.GetFullPath(file);
+            var info = new FileInfo(fullPath);
+            var fileName = info.Name;
+            var length = info.Length;
+            var lastWriteTicks = info.LastWriteTimeUtc.Ticks;
+
+            if (!existing.TryGetValue(fullPath, out var old))
+            {
+                pending.Add(new PendingSourceUpdate(
+                    fullPath,
+                    fileName,
+                    ComputeSha256(fullPath),
+                    length,
+                    lastWriteTicks,
+                    IsNew: true,
+                    ContentChanged: true));
+                continue;
+            }
+
+            var metadataMatches =
+                old.SourceLength == length &&
+                old.SourceLastWriteUtcTicks == lastWriteTicks &&
+                !string.IsNullOrWhiteSpace(old.Sha256);
+
+            if (metadataMatches && string.Equals(old.FileName, fileName, StringComparison.Ordinal))
+                continue;
+
+            // Existing projects created before the metadata columns were added have
+            // -1 here. They are hashed once in the background, then future opens are fast.
+            var sha = ComputeSha256(fullPath);
+            pending.Add(new PendingSourceUpdate(
+                fullPath,
+                fileName,
+                sha,
+                length,
+                lastWriteTicks,
+                IsNew: false,
+                ContentChanged: !string.Equals(old.Sha256, sha, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (pending.Count == 0) return 0;
+
+        using var writeConnection = Open();
+        using var transaction = writeConnection.BeginTransaction();
+        var inserted = 0;
+
+        foreach (var item in pending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var command = writeConnection.CreateCommand();
             command.Transaction = transaction;
-            if (oldSha is null)
+
+            if (item.IsNew)
             {
                 command.CommandText = """
-                    INSERT INTO Images (SourcePath, FileName, Sha256)
-                    VALUES ($path, $name, $sha);
+                    INSERT INTO Images(
+                        SourcePath, FileName, Sha256, SourceLength, SourceLastWriteUtcTicks)
+                    VALUES($path, $name, $sha, $length, $ticks);
                     """;
                 inserted++;
             }
-            else if (!string.Equals(oldSha, sha, StringComparison.OrdinalIgnoreCase))
+            else if (item.ContentChanged)
             {
-                // 同一路径文件内容发生变化时，旧标签不能继续沿用。
+                // Same path now points to different content: old labels must not survive.
                 command.CommandText = """
                     UPDATE Images
-                    SET FileName=$name, Sha256=$sha, Width=0, Height=0,
-                        Split=0, Truth=0, DefectType=0, DefectRois=''
+                    SET FileName=$name, Sha256=$sha,
+                        SourceLength=$length, SourceLastWriteUtcTicks=$ticks,
+                        Width=0, Height=0, Split=0, Truth=0, DefectType=0, DefectRois=''
                     WHERE SourcePath=$path;
                     """;
             }
             else
             {
-                command.CommandText = "UPDATE Images SET FileName=$name WHERE SourcePath=$path;";
+                // Timestamp/metadata changed but bytes are identical; preserve labels.
+                command.CommandText = """
+                    UPDATE Images
+                    SET FileName=$name, Sha256=$sha,
+                        SourceLength=$length, SourceLastWriteUtcTicks=$ticks
+                    WHERE SourcePath=$path;
+                    """;
             }
 
-            command.Parameters.AddWithValue("$path", fullPath);
-            command.Parameters.AddWithValue("$name", Path.GetFileName(fullPath));
-            command.Parameters.AddWithValue("$sha", sha);
+            command.Parameters.AddWithValue("$path", item.SourcePath);
+            command.Parameters.AddWithValue("$name", item.FileName);
+            command.Parameters.AddWithValue("$sha", item.Sha256);
+            command.Parameters.AddWithValue("$length", item.SourceLength);
+            command.Parameters.AddWithValue("$ticks", item.SourceLastWriteUtcTicks);
             command.ExecuteNonQuery();
         }
 
@@ -251,7 +335,7 @@ public sealed class CatalogRepository
         }
         catch (JsonException)
         {
-            // 兼容最早版本仅记录状态文字的 Operations；这类历史记录无法无损回滚。
+            // Earliest versions logged only a status string and cannot be losslessly restored.
             return null;
         }
         if (snapshot is null) return null;
@@ -362,6 +446,32 @@ public sealed class CatalogRepository
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
+    private static void EnsureImageMetadataColumns(SqliteConnection connection)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "PRAGMA table_info(Images);";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(1));
+        }
+
+        if (!columns.Contains("SourceLength"))
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE Images ADD COLUMN SourceLength INTEGER NOT NULL DEFAULT -1;";
+            alter.ExecuteNonQuery();
+        }
+
+        if (!columns.Contains("SourceLastWriteUtcTicks"))
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE Images ADD COLUMN SourceLastWriteUtcTicks INTEGER NOT NULL DEFAULT -1;";
+            alter.ExecuteNonQuery();
+        }
+    }
+
     private ImageRecord? LoadImage(long imageId) => LoadImages().FirstOrDefault(x => x.Id == imageId);
 
     private static void ApplyClassification(
@@ -392,6 +502,21 @@ public sealed class CatalogRepository
         connection.Open();
         return connection;
     }
+
+    private readonly record struct ExistingSourceState(
+        string FileName,
+        string Sha256,
+        long SourceLength,
+        long SourceLastWriteUtcTicks);
+
+    private readonly record struct PendingSourceUpdate(
+        string SourcePath,
+        string FileName,
+        string Sha256,
+        long SourceLength,
+        long SourceLastWriteUtcTicks,
+        bool IsNew,
+        bool ContentChanged);
 
     private sealed class ClassificationSnapshot
     {

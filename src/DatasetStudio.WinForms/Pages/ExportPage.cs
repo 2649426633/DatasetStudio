@@ -16,7 +16,12 @@ public sealed partial class ExportPage : UserControl
     {
         _session = session;
         _lastPackageDirectory = null;
-        RefreshSummary();
+
+        // Keep project opening fast. MainForm calls RefreshSummary when this page
+        // is actually opened, so there is no reason to query all image rows here.
+        _projectPath.Text = $"项目目录：{session.ProjectDirectory}\n导出目录：{Path.Combine(session.ProjectDirectory, "exports")}";
+        foreach (var label in new[] { _trainGoodCount, _testGoodCount, _testNgCount, _ignoredCount })
+            label.Text = "—";
     }
 
     public void RefreshSummary()

@@ -17,7 +17,13 @@ public sealed partial class ValidationPage : UserControl
     public void BindSession(AppSession session)
     {
         _session = session;
-        RunValidation();
+
+        // Opening a project should stay lightweight. Full validation can touch every
+        // source record/file, so MainForm runs it only when the user enters this page.
+        _grid.Rows.Clear();
+        _summary.Text = "项目已打开";
+        _summaryDetail.Text = "进入“数据校验”页时会执行完整校验。";
+        ApplySummaryStyle(UiTheme.TextSecondary, UiTheme.SurfaceSoft, UiTheme.Border, "—");
     }
 
     public void RunValidation()
